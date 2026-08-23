@@ -75,8 +75,9 @@ Build order follows tech-stack report §7: (1) recorder ✅ → (2) webcam helpe
 
 ## Quickstart
 
-```bash
-npm install && npm run build          # all TS workspaces
+```powershell
+npm install
+npm run build
 pip install -e pipeline               # core pipeline (add "[all]" for STT+VAD)
 cargo build --release --manifest-path helper/capture-helper/Cargo.toml   # optional
 
@@ -92,12 +93,12 @@ what the pipeline transcribes into the note. Stop from the tray.
 
 Then:
 
-```bash
+```powershell
 playtest-pipeline process "<sessions folder>\<session id>"
 # → <session>\report\report.html   (open it — done)
 
 # optional Notion page (integration token with access to the parent page):
-set NOTION_TOKEN=secret_…
+$env:NOTION_TOKEN = "secret_…"
 playtest-notion publish "<session>\report" --parent-page <notion-page-id>
 ```
 
