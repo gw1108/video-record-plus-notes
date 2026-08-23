@@ -33,6 +33,7 @@
         <label>Host <input id="obs-host" type="text" /></label>
         <label>Port <input id="obs-port" type="number" min="1" max="65535" /></label>
         <label class="grow">Password <input id="obs-password" type="password" /></label>
+        <button id="obs-autodetect" type="button">Auto-detect from OBS</button>
         <button id="obs-connect" type="button">Connect</button>
       </div>
       <div id="obs-info" class="meta"></div>
@@ -41,6 +42,8 @@
         <button id="run-preflight" type="button" disabled>Run preflight</button>
         <button id="apply-recommended" type="button" disabled>Apply recommended settings</button>
       </div>
+      <p class="hint">Auto-detect reads OBS's own WebSocket settings (port + password) and, if the server is
+        off and OBS is closed, turns it on for you. Otherwise flip it on in OBS → Tools → WebSocket Server Settings.</p>
       <p class="hint">Preflight verifies Hybrid MP4 (chapters + crash recovery), mic on audio track 2, and a
         hardware encoder. Encoder tuning (single-pass CQP, psycho-visual tuning off, lookahead off) must be set
         in OBS itself — see the checklist in the README.</p>
@@ -96,6 +99,6 @@
     </section>
   </main>
 
-  <script type="module" src="./renderer/renderer.js"></script>
+  <script type="module" src="./renderer.js"></script>
 </body>
 </html>

@@ -154,19 +154,41 @@ function renderSummary(summary: SessionSummary): void {
 }
 
 async function connectObs(): Promise<void> {
-  config = await api.setConfig(readConfigForm());
-  obsInfo.textContent = 'Connecting…';
-  const result = await api.obsConnect();
-  if (result.connected) {
-    obsInfo.textContent = `OBS ${result.obsVersion} · obs-websocket ${result.obsWebSocketVersion}` +
-      (result.recordDirectory ? ` · records to ${result.recordDirectory}` : '');
-    log('info', 'Connected to OBS.');
-    renderPreflight(await api.obsPreflight());
-  } else {
-    obsInfo.textContent = '';
-    log('error', `OBS connection failed: ${result.error ?? 'unknown error'}. Enable Tools → WebSocket Server Settings in OBS.`);
+  // Every failure must reach the log — a silent button is indistinguishable
+  // from a broken one, so the IPC round-trip is guarded end to end.
+  try {
+    config = await api.setConfig(readConfigForm());
+    obsInfo.textContent = 'Connecting…';
+    log('info', `Connecting to ws://${config.obs.host}:${config.obs.port}…`);
+    const result = await api.obsConnect();
+    if (result.connected) {
+      obsInfo.textContent = `OBS ${result.obsVersion} · obs-websocket ${result.obsWebSocketVersion}` +
+        (result.recordDirectory ? ` · records to ${result.recordDirectory}` : '');
+      log('info', 'Connected to OBS.');
+      renderPreflight(await api.obsPreflight());
+    } else {
+      obsInfo.textContent = 'Not connected';
+      log('error', `OBS connection failed: ${result.error ?? 'unknown error'}. Try Auto-detect from OBS, or enable Tools → WebSocket Server Settings in OBS.`);
+    }
+    renderStatus(await api.getStatus());
+  } catch (err) {
+    obsInfo.textContent = 'Not connected';
+    log('error', `Connect failed unexpectedly: ${String(err)}`);
   }
-  renderStatus(await api.getStatus());
+}
+
+/** Read OBS's own websocket config; enable its server when it is safe to. */
+async function autoDetectObs(): Promise<void> {
+  try {
+    log('info', 'Reading OBS WebSocket settings…');
+    const result = await api.obsAutoDetect();
+    log(result.ok ? 'info' : 'warn', result.message);
+    config = await api.getConfig();
+    fillConfigForm();
+    if (result.ok && result.serverEnabled && !result.enabledNow) await connectObs();
+  } catch (err) {
+    log('error', `Auto-detect failed: ${String(err)}`);
+  }
 }
 
 async function init(): Promise<void> {
@@ -174,6 +196,7 @@ async function init(): Promise<void> {
   fillConfigForm();
   renderStatus(await api.getStatus());
 
+  $<HTMLButtonElement>('obs-autodetect').addEventListener('click', () => void autoDetectObs());
   $<HTMLButtonElement>('obs-connect').addEventListener('click', () => void connectObs());
   preflightBtn.addEventListener('click', async () => renderPreflight(await api.obsPreflight()));
   applyBtn.addEventListener('click', async () => {
@@ -228,4 +251,8 @@ async function init(): Promise<void> {
   });
 }
 
-void init();
+// A throw inside init() would leave every button unbound with no visible
+// cause; surface it in the log instead of dying silently in the console.
+void init().catch((err) => {
+  log('error', `UI failed to initialise: ${String(err)}`);
+});

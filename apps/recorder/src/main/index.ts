@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatTimecode } from '@playtest/shared';
 import type {
+  ObsAutoDetectResult,
   ObsConnectResult,
   RecorderConfig,
   RecorderPushEvent,
@@ -19,6 +20,11 @@ import type {
 } from '../common/ipc-contract.js';
 import { loadConfig, saveConfig } from './config.js';
 import { ObsClient } from './obs.js';
+import {
+  enableObsWebsocketServer,
+  obsIsRunning,
+  readObsWebsocketSettings,
+} from './obs-config.js';
 import { applyRecommended, runPreflight } from './preflight.js';
 import { SessionController } from './recording.js';
 import { RecorderTray } from './tray.js';
@@ -159,6 +165,84 @@ function registerIpc(): void {
     } catch (err) {
       return { connected: false, error: String(err) };
     }
+  });
+
+  ipcMain.handle('obs:auto-detect', async (): Promise<ObsAutoDetectResult> => {
+    const settings = readObsWebsocketSettings();
+    if (!settings.found) {
+      return {
+        ok: false,
+        configPath: settings.path,
+        found: false,
+        serverEnabled: false,
+        enabledNow: false,
+        obsRunning: await obsIsRunning(),
+        message: `No obs-websocket config at ${settings.path}. Install and run OBS Studio 30.2+ once, then try again.`,
+      };
+    }
+
+    // Adopt OBS's own port/password. Auth off in OBS means connect with none.
+    config = {
+      ...config,
+      obs: {
+        host: '127.0.0.1',
+        port: settings.port,
+        password: settings.authRequired ? settings.password : '',
+      },
+    };
+    saveConfig(config);
+
+    const base = {
+      configPath: settings.path,
+      found: true,
+      port: settings.port,
+      passwordSet: config.obs.password.length > 0,
+    };
+
+    if (settings.serverEnabled) {
+      return {
+        ...base,
+        ok: true,
+        serverEnabled: true,
+        enabledNow: false,
+        obsRunning: await obsIsRunning(),
+        message: `Read OBS settings: port ${settings.port}, ${settings.authRequired ? 'password adopted' : 'no auth'}. Server already enabled — press Connect.`,
+      };
+    }
+
+    // Server is off. OBS rewrites this file from memory on exit, so editing it
+    // under a running OBS would be silently reverted.
+    if (await obsIsRunning()) {
+      return {
+        ...base,
+        ok: false,
+        serverEnabled: false,
+        enabledNow: false,
+        obsRunning: true,
+        message: `Port ${settings.port} and password adopted, but OBS's WebSocket server is off and OBS is running. Enable it in OBS → Tools → WebSocket Server Settings (or quit OBS and click Auto-detect again).`,
+      };
+    }
+
+    try {
+      enableObsWebsocketServer();
+    } catch (err) {
+      return {
+        ...base,
+        ok: false,
+        serverEnabled: false,
+        enabledNow: false,
+        obsRunning: false,
+        message: `Could not enable OBS's WebSocket server (${String(err)}). Enable it manually in OBS → Tools → WebSocket Server Settings.`,
+      };
+    }
+    return {
+      ...base,
+      ok: true,
+      serverEnabled: true,
+      enabledNow: true,
+      obsRunning: false,
+      message: `Enabled OBS's WebSocket server on port ${settings.port} (backup written next to ${settings.path}). Start OBS, then press Connect.`,
+    };
   });
 
   ipcMain.handle('obs:preflight', () => runPreflight(obs));

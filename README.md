@@ -70,7 +70,11 @@ Build order follows tech-stack report §7: (1) recorder ✅ → (2) webcam helpe
 
 - **Windows**, Node 20+, Python 3.11+, **ffmpeg/ffprobe on PATH**
 - **OBS Studio 30.2+** (this machine: 32.2.2 ✓) with the WebSocket server
-  enabled: OBS → Tools → WebSocket Server Settings → Enable, set a password
+  enabled: OBS → Tools → WebSocket Server Settings → Enable. You do not need to
+  copy the port/password by hand — the recorder's **Auto-detect from OBS**
+  button reads them straight out of OBS's own plugin config, and turns the
+  server on for you when OBS is closed (OBS rewrites that file on exit, so a
+  running OBS has to be flipped from the dialog).
 - Rust toolchain only if you want the Raw Input fallback helper
 
 ## Quickstart

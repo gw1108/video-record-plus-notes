@@ -9,12 +9,6 @@ validate everything already written before new surface is added.
 
 ---
 
-## M0 — Repo hygiene (minutes)
-
-- [ ] Initial git commit (repo currently has zero commits).
-- [ ] Add a `LICENSE` file (AGPL-3.0-only, sole copyright — §6.1 requires
-      greenfield Branch A, which this is).
-
 ## M1 — First real recording session (validate Phase 1 end-to-end)
 
 The recorder boots and compiles but has never driven a real recording. Run a
@@ -128,9 +122,6 @@ The headline "separate webcam track" feature (§3.6, perf §6.2). In
 
 ## M7 — Product track (build-order step 7 + business, later)
 
-- [ ] Legal review before anything commercial: obs-websocket mere-aggregation
-      position, and whether bundling/auto-downloading the OBS installer is
-      acceptable (§3.2, risk 2/8).
 - [ ] LGPL FFmpeg build for distribution (current dev machine uses a GPL gyan
       build — fine locally, not shippable; §6.2).
 - [ ] Decide hosted/multi-user shell approach (greenfield per §5.6 Branch A).

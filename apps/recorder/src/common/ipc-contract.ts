@@ -71,6 +71,25 @@ export interface ObsConnectResult {
   error?: string;
 }
 
+/** Result of reading (and optionally enabling) OBS's own websocket config. */
+export interface ObsAutoDetectResult {
+  ok: boolean;
+  /** Where OBS's obs-websocket plugin config lives. */
+  configPath: string;
+  /** False when OBS has never been run / the plugin config is missing. */
+  found: boolean;
+  /** State of OBS's WebSocket server AFTER this call. */
+  serverEnabled: boolean;
+  /** True when this call flipped it on by editing OBS's config. */
+  enabledNow: boolean;
+  /** True when OBS was running, so the config could not be edited safely. */
+  obsRunning: boolean;
+  port?: number;
+  passwordSet?: boolean;
+  /** Human-readable next step for the log. */
+  message: string;
+}
+
 export interface StartSessionRequest {
   title: string;
   targetKind: CaptureTargetKind;
@@ -115,6 +134,7 @@ export interface PlaytestApi {
   getConfig(): Promise<RecorderConfig>;
   setConfig(config: RecorderConfig): Promise<RecorderConfig>;
   obsConnect(): Promise<ObsConnectResult>;
+  obsAutoDetect(): Promise<ObsAutoDetectResult>;
   obsPreflight(): Promise<PreflightCheck[]>;
   obsApplyRecommended(): Promise<PreflightCheck[]>;
   startSession(req: StartSessionRequest): Promise<{ ok: boolean; error?: string }>;
@@ -127,6 +147,7 @@ export const IPC = {
   getConfig: 'config:get',
   setConfig: 'config:set',
   obsConnect: 'obs:connect',
+  obsAutoDetect: 'obs:auto-detect',
   obsPreflight: 'obs:preflight',
   obsApplyRecommended: 'obs:apply-recommended',
   startSession: 'session:start',

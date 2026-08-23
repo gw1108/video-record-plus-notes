@@ -14,6 +14,7 @@ const api: PlaytestApi = {
   getConfig: () => ipcRenderer.invoke('config:get'),
   setConfig: (config: RecorderConfig) => ipcRenderer.invoke('config:set', config),
   obsConnect: () => ipcRenderer.invoke('obs:connect'),
+  obsAutoDetect: () => ipcRenderer.invoke('obs:auto-detect'),
   obsPreflight: () => ipcRenderer.invoke('obs:preflight'),
   obsApplyRecommended: () => ipcRenderer.invoke('obs:apply-recommended'),
   startSession: (req: StartSessionRequest) => ipcRenderer.invoke('session:start', req),
