@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Playtest Recorder</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header>
+    <h1>Playtest Recorder</h1>
+    <span id="status-pill" class="pill idle">idle</span>
+  </header>
+
+  <main>
+    <section id="summary-section" class="card hidden">
+      <h2>Last session</h2>
+      <div id="summary-meta" class="meta"></div>
+      <table id="summary-marks">
+        <thead><tr><th>#</th><th>Label</th><th>Video time</th><th>Game time</th><th>Anchor</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row">
+        <code id="pipeline-command" class="grow"></code>
+        <button id="copy-pipeline" type="button">Copy</button>
+      </div>
+      <p class="hint">Run this in a terminal to condense the recording and build the report.</p>
+    </section>
+
+    <section class="card">
+      <h2>OBS connection</h2>
+      <div class="row">
+        <label>Host <input id="obs-host" type="text" /></label>
+        <label>Port <input id="obs-port" type="number" min="1" max="65535" /></label>
+        <label class="grow">Password <input id="obs-password" type="password" /></label>
+        <button id="obs-connect" type="button">Connect</button>
+      </div>
+      <div id="obs-info" class="meta"></div>
+      <div id="preflight"></div>
+      <div class="row">
+        <button id="run-preflight" type="button" disabled>Run preflight</button>
+        <button id="apply-recommended" type="button" disabled>Apply recommended settings</button>
+      </div>
+      <p class="hint">Preflight verifies Hybrid MP4 (chapters + crash recovery), mic on audio track 2, and a
+        hardware encoder. Encoder tuning (single-pass CQP, psycho-visual tuning off, lookahead off) must be set
+        in OBS itself — see the checklist in the README.</p>
+    </section>
+
+    <section class="card">
+      <h2>Hotkeys &amp; options</h2>
+      <div class="row">
+        <label>Mark key <input id="hotkey-mark" type="text" /></label>
+        <label>Issue key <input id="hotkey-issue" type="text" /></label>
+        <label>Capture mode
+          <select id="hotkey-mode">
+            <option value="global-shortcut">Global shortcut (swallows key)</option>
+            <option value="raw-input">Raw Input helper (passes key through)</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="check"><input id="telemetry-enabled" type="checkbox" /> Game telemetry</label>
+        <label class="grow">URL <input id="telemetry-url" type="text" /></label>
+      </div>
+      <div class="row">
+        <label class="grow">Sessions folder <input id="sessions-dir" type="text" /></label>
+        <button id="save-config" type="button">Save settings</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Session</h2>
+      <div class="row">
+        <label class="grow">Title <input id="session-title" type="text" placeholder="e.g. DungeonSweeper2 playtest #3" /></label>
+      </div>
+      <div class="row">
+        <label>Target
+          <select id="target-kind">
+            <option value="game">Game</option>
+            <option value="video">Video</option>
+            <option value="app">App</option>
+            <option value="device">Device / capture card</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label class="grow">Target name <input id="target-name" type="text" placeholder="e.g. DungeonSweeper2" /></label>
+        <button id="start-session" type="button" class="primary" disabled>Start recording</button>
+      </div>
+      <p class="hint">Starting closes this window — the recorder runs from the tray. Press the mark key when
+        something interesting happens and dictate a note; press stop from the tray when done.</p>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="./renderer/renderer.js"></script>
+</body>
+</html>

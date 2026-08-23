@@ -1,0 +1,86 @@
+# Dependencies
+node_modules/
+
+# Electron and frontend build output
+dist/
+out/
+release/
+build/
+.vite/
+.webpack/
+coverage/
+
+# Package-manager caches and logs
+.npm/
+.pnpm-store/
+.yarn/cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime recordings and processing artifacts
+data/
+recordings/
+captures/
+transcripts/
+exports/
+processed/
+thumbnails/
+waveforms/
+temp/
+tmp/
+
+# Downloaded speech-to-text models
+models/
+checkpoints/
+*.bin
+*.gguf
+*.onnx
+*.safetensors
+*.pt
+*.pth
+
+# Local OBS state or profiles, if stored inside the project
+obs-data/
+obs-config/
+obs-studio/
+
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Electron signing and publishing credentials
+*.p12
+*.pfx
+*.mobileprovision
+
+# OS and editor state
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+
+# Test output
+playwright-report/
+test-results/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Rust (native capture helper)
+target/
+
+# Python (post-session pipeline)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/

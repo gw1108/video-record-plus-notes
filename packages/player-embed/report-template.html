@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Playtest Report</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --border: #dde1e6; --text: #1c2128;
+    --muted: #616a75; --accent: #2f6fed; --mark: #e8543f; --vad: #b98a1e;
+    --range: rgba(47, 111, 237, 0.18); --active: rgba(47, 111, 237, 0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --card: #1d2026; --border: #2c3038; --text: #e6e8eb;
+      --muted: #9aa1ab; --accent: #4f8cff; --mark: #ef6b57; --vad: #d9a72e;
+      --range: rgba(79, 140, 255, 0.22); --active: rgba(79, 140, 255, 0.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  .layout { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  header h1 { font-size: 20px; margin: 0 0 2px; }
+  header .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 18px; }
+  @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+
+  .player-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  video { width: 100%; border-radius: 6px; background: #000; display: block; }
+
+  .strip { position: relative; height: 22px; margin: 10px 2px 2px; border-radius: 4px;
+           background: color-mix(in srgb, var(--border) 55%, transparent); cursor: pointer; }
+  .strip .range { position: absolute; top: 0; bottom: 0; background: var(--range); border-radius: 3px; }
+  .strip .tick { position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
+                 background: var(--mark); transform: translateX(-1.5px); }
+  .strip .tick.vad { background: var(--vad); }
+  .strip .playhead { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--text);
+                     transform: translateX(-1px); pointer-events: none; }
+
+  .controls { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .controls label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .controls .spacer { flex: 1; }
+  .controls .now { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+
+  .notes { display: flex; flex-direction: column; gap: 8px; max-height: 70vh; overflow-y: auto; padding-right: 4px; }
+  .note {
+    background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--mark);
+    border-radius: 8px; padding: 9px 12px; cursor: pointer;
+  }
+  .note.vad { border-left-color: var(--vad); }
+  .note:hover { border-color: var(--accent); }
+  .note.active { background: var(--active); border-color: var(--accent); }
+  .note .head { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--muted); }
+  .note .head .time { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .note .head .label { text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+  .note .text { margin-top: 3px; font-size: 13.5px; }
+  .note .text.empty { color: var(--muted); font-style: italic; }
+  .note.dropped { opacity: 0.65; cursor: default; border-left-color: var(--muted); }
+  .note.dropped:hover { border-color: var(--border); }
+
+  details.transcript { margin-top: 18px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+  details.transcript summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+  .tseg { margin: 8px 0; font-size: 13.5px; }
+  .tseg .time { color: var(--accent); font-size: 12px; font-variant-numeric: tabular-nums; margin-right: 6px; cursor: pointer; }
+  .tseg .w { cursor: pointer; border-radius: 2px; }
+  .tseg .w.current { background: var(--range); }
+
+  footer { margin-top: 22px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <header>
+    <h1 id="title"></h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <div class="columns">
+    <div>
+      <div class="player-card">
+        <video id="video" controls preload="metadata"></video>
+        <div class="strip" id="strip" title="Marks and kept segments"></div>
+        <div class="controls">
+          <label id="skip-toggle-wrap"><input type="checkbox" id="skip-toggle" checked />
+            Condensed playback (skip unmarked parts)</label>
+          <span class="spacer"></span>
+          <span class="now" id="now"></span>
+        </div>
+      </div>
+
+      <details class="transcript" id="transcript-details">
+        <summary>Full transcript</summary>
+        <div id="transcript"></div>
+      </details>
+    </div>
+
+    <div class="notes" id="notes"></div>
+  </div>
+
+  <footer>Generated by the playtest recorder pipeline. Timestamps are original-recording time.</footer>
+</div>
+
+<script>
+'use strict';
+// Injected by the pipeline (report.py replaces the placeholder with the
+// report_data.json blob). Never fetch()ed: file:// pages can't read siblings.
+const DATA = /*__REPORT_DATA__*/null;
+
+(function main() {
+  if (!DATA) {
+    document.getElementById('title').textContent =
+      'No report data — this template must be processed by playtest-pipeline.';
+    return;
+  }
+  const video = document.getElementById('video');
+  const strip = document.getElementById('strip');
+  const notesEl = document.getElementById('notes');
+  const nowEl = document.getElementById('now');
+  const skipToggle = document.getElementById('skip-toggle');
+  const isCondensedFile = DATA.video.kind === 'condensed';
+
+  // ---- time domain translation (player time <-> original recording time) ----
+  const cutmap = DATA.cutmap || [];
+  function toPlayerMs(originalMs) {
+    if (!isCondensedFile) return originalMs;
+    for (const s of cutmap) {
+      if (originalMs >= s.originalStartMs && originalMs <= s.originalEndMs)
+        return s.condensedStartMs + (originalMs - s.originalStartMs);
+    }
+    for (const s of cutmap) if (s.originalStartMs > originalMs) return s.condensedStartMs;
+    return null;
+  }
+  function toOriginalMs(playerMs) {
+    if (!isCondensedFile) return playerMs;
+    for (const s of cutmap) {
+      if (playerMs >= s.condensedStartMs && playerMs <= s.condensedEndMs)
+        return s.originalStartMs + (playerMs - s.condensedStartMs);
+    }
+    return cutmap.length ? cutmap[cutmap.length - 1].originalEndMs : playerMs;
+  }
+
+  function fmt(ms) {
+    const t = Math.floor(Math.max(0, ms) / 1000);
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    const two = (n) => String(n).padStart(2, '0');
+    return h ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
+  }
+
+  function seekOriginal(originalMs) {
+    const p = toPlayerMs(originalMs);
+    if (p !== null) {
+      video.currentTime = p / 1000;
+      video.play().catch(() => {});
+    }
+  }
+
+  // ---- header ----
+  document.getElementById('title').textContent = DATA.session.title;
+  const date = DATA.session.date ? new Date(DATA.session.date).toLocaleString() : '';
+  document.getElementById('meta').textContent =
+    `${date} · original ${fmt(DATA.session.originalDurationMs)} · ` +
+    (isCondensedFile ? `condensed to ${fmt(DATA.video.durationMs)} · ` : '') +
+    `${DATA.notes.length} notes`;
+
+  // ---- video ----
+  video.src = DATA.video.file;
+
+  // ---- segment-skip module (~30 lines, tech-stack report §5.1) ----
+  // Only meaningful when the file is the FULL recording: while enabled,
+  // leaving a marked range jumps the playhead to the next range's start.
+  // On a physically condensed file everything is marked, so it's disabled.
+  const ranges = (DATA.ranges || []).slice().sort((a, b) => a.startMs - b.startMs);
+  const skipWrap = document.getElementById('skip-toggle-wrap');
+  if (isCondensedFile || ranges.length === 0) {
+    skipWrap.style.display = 'none';
+    skipToggle.checked = false;
+  }
+  function nextRangeAfter(originalMs) {
+    for (const r of ranges) if (r.startMs > originalMs) return r;
+    return null;
+  }
+  function inRange(originalMs) {
+    return ranges.some((r) => originalMs >= r.startMs && originalMs <= r.endMs);
+  }
+  function applySkip() {
+    if (!skipToggle.checked || isCondensedFile) return;
+    const o = video.currentTime * 1000;
+    if (inRange(o)) return;
+    const next = nextRangeAfter(o);
+    if (next) video.currentTime = next.startMs / 1000;
+    else video.pause();
+  }
+  video.addEventListener('timeupdate', applySkip);
+  video.addEventListener('seeked', applySkip);
+
+  // ---- marker strip ----
+  function playerDurationMs() {
+    return (video.duration && isFinite(video.duration))
+      ? video.duration * 1000 : DATA.video.durationMs || 1;
+  }
+  function buildStrip() {
+    strip.querySelectorAll('.range, .tick').forEach((el) => el.remove());
+    const dur = playerDurationMs();
+    const bands = isCondensedFile
+      ? cutmap.map((s) => ({ a: s.condensedStartMs, b: s.condensedEndMs }))
+      : ranges.map((r) => ({ a: r.startMs, b: r.endMs }));
+    for (const band of bands) {
+      const el = document.createElement('div');
+      el.className = 'range';
+      el.style.left = `${(100 * band.a) / dur}%`;
+      el.style.width = `${(100 * (band.b - band.a)) / dur}%`;
+      strip.appendChild(el);
+    }
+    for (const note of DATA.notes) {
+      const p = toPlayerMs(note.videoMs);
+      if (p === null) continue;
+      const el = document.createElement('div');
+      el.className = 'tick' + (note.kind === 'vad' ? ' vad' : '');
+      el.style.left = `${(100 * p) / dur}%`;
+      el.title = `[${fmt(note.videoMs)}] ${note.label}: ${note.text || ''}`;
+      strip.appendChild(el);
+    }
+  }
+  const playhead = document.createElement('div');
+  playhead.className = 'playhead';
+  strip.appendChild(playhead);
+  strip.addEventListener('click', (e) => {
+    const rect = strip.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    video.currentTime = (frac * playerDurationMs()) / 1000;
+  });
+  video.addEventListener('loadedmetadata', buildStrip);
+  buildStrip();
+
+  // ---- notes list + note-sync ----
+  const noteEls = new Map();
+  for (const note of DATA.notes) {
+    const el = document.createElement('div');
+    el.className = 'note' + (note.kind === 'vad' ? ' vad' : '');
+    const head = document.createElement('div');
+    head.className = 'head';
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = fmt(note.videoMs);
+    head.appendChild(time);
+    if (note.gameTimeMs !== null && note.gameTimeMs !== undefined) {
+      const game = document.createElement('span');
+      game.textContent = `game ${fmt(note.gameTimeMs)}`;
+      head.appendChild(game);
+    }
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = note.label;
+    head.appendChild(label);
+    const text = document.createElement('div');
+    text.className = 'text' + (note.text ? '' : ' empty');
+    text.textContent = note.text || 'no transcribed speech';
+    el.append(head, text);
+    el.addEventListener('click', () => seekOriginal(note.videoMs));
+    notesEl.appendChild(el);
+    noteEls.set(note.id, el);
+  }
+
+  // Marks anchored beyond the salvaged recording (OBS crash): the moment was
+  // marked but its video was lost. Listed so the mark isn't silently missing;
+  // not clickable — there is nothing to seek to.
+  for (const mark of DATA.droppedMarks || []) {
+    const el = document.createElement('div');
+    el.className = 'note dropped';
+    const head = document.createElement('div');
+    head.className = 'head';
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = fmt(mark.videoMs);
+    head.appendChild(time);
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = mark.label;
+    head.appendChild(label);
+    const text = document.createElement('div');
+    text.className = 'text empty';
+    text.textContent = 'beyond the salvaged recording — video for this mark was lost';
+    el.append(head, text);
+    notesEl.appendChild(el);
+  }
+
+  let activeIds = '';
+  function syncNotes() {
+    const o = toOriginalMs(video.currentTime * 1000);
+    const active = DATA.notes.filter((n) => o >= n.windowStartMs && o <= n.windowEndMs);
+    const ids = active.map((n) => n.id).join(',');
+    nowEl.textContent = `original ${fmt(o)}`;
+    playhead.style.left = `${(100 * video.currentTime * 1000) / playerDurationMs()}%`;
+    if (ids === activeIds) return;
+    activeIds = ids;
+    for (const [id, el] of noteEls) el.classList.toggle('active', ids.split(',').includes(id));
+    const first = active[0] && noteEls.get(active[0].id);
+    if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  video.addEventListener('timeupdate', syncNotes);
+  video.addEventListener('seeked', syncNotes);
+
+  // ---- transcript (Hyperaudio-style click-to-seek) ----
+  const transcriptEl = document.getElementById('transcript');
+  const wordEls = [];
+  const segments = DATA.transcript || [];
+  if (segments.length === 0) {
+    document.getElementById('transcript-details').style.display = 'none';
+  }
+  for (const seg of segments) {
+    const p = document.createElement('p');
+    p.className = 'tseg';
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = fmt(seg.startMs);
+    time.addEventListener('click', () => seekOriginal(seg.startMs));
+    p.appendChild(time);
+    const words = seg.words && seg.words.length ? seg.words : null;
+    if (words) {
+      for (const w of words) {
+        const span = document.createElement('span');
+        span.className = 'w';
+        span.textContent = w.text + ' ';
+        span.addEventListener('click', () => seekOriginal(w.startMs));
+        p.appendChild(span);
+        wordEls.push({ el: span, startMs: w.startMs, endMs: w.endMs });
+      }
+    } else {
+      const span = document.createElement('span');
+      span.className = 'w';
+      span.textContent = seg.text;
+      span.addEventListener('click', () => seekOriginal(seg.startMs));
+      p.appendChild(span);
+    }
+    transcriptEl.appendChild(p);
+  }
+  let currentWord = null;
+  video.addEventListener('timeupdate', () => {
+    const o = toOriginalMs(video.currentTime * 1000);
+    const hit = wordEls.find((w) => o >= w.startMs && o <= w.endMs) || null;
+    if (hit === currentWord) return;
+    if (currentWord) currentWord.el.classList.remove('current');
+    if (hit) hit.el.classList.add('current');
+    currentWord = hit;
+  });
+})();
+</script>
+</body>
+</html>

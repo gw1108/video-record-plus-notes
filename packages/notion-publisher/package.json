@@ -1,0 +1,24 @@
+{
+  "name": "@playtest/notion-publisher",
+  "version": "0.1.0",
+  "description": "Publishes a pipeline report bundle as a Notion page: condensed video (multi-part file upload), notes as native blocks, transcript toggle, optional embedded synced player.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "playtest-notion": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "@playtest/shared": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0"
+  }
+}

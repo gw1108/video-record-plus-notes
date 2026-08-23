@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "playtest-pipeline"
+version = "0.1.0"
+description = "Post-session pipeline: extract mic track, VAD, speech-to-text, FFmpeg condensed cut + cut map, report bundle (player page), Notion handoff."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "George", email = "georgetw1108@gmail.com" }]
+
+# The core pipeline needs only ffmpeg/ffprobe on PATH. STT and VAD are
+# optional heavyweight extras — the pipeline degrades gracefully without them
+# (notes fall back to empty text; segments come from marks alone).
+dependencies = []
+
+[project.optional-dependencies]
+stt = ["faster-whisper>=1.0"]
+vad = ["silero-vad>=5.1"]
+all = ["faster-whisper>=1.0", "silero-vad>=5.1"]
+
+[project.scripts]
+playtest-pipeline = "playtest_pipeline.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["playtest_pipeline*"]

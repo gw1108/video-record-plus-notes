@@ -1,0 +1,23 @@
+{
+  "name": "playtest-recorder-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Playtest session recorder: record any screen target via OBS, hotkey-mark moments, dictate notes, and generate a condensed report (self-hosted page + Notion) that plays only the marked segments.",
+  "license": "AGPL-3.0-only",
+  "author": "George <georgetw1108@gmail.com>",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/notion-publisher",
+    "apps/recorder"
+  ],
+  "scripts": {
+    "build": "npm run build -w @playtest/shared && npm run build -w @playtest/notion-publisher && npm run build -w playtest-recorder",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "recorder": "npm run start -w playtest-recorder"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

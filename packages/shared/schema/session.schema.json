@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://playtest-recorder.dev/schema/session.schema.json",
+  "title": "Playtest session sidecar (session.json)",
+  "description": "Source of truth for marks/events/telemetry of one recording session. All times are milliseconds. monoMs = monotonic clock since process epoch; videoMs = position in the OBS recording anchored via GetRecordStatus.outputDuration. Mirrored by packages/shared/src/session.ts (TypeScript) and pipeline/playtest_pipeline/session.py (Python).",
+  "type": "object",
+  "required": ["schemaVersion", "session", "marks", "events", "telemetry"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "session": {
+      "type": "object",
+      "required": ["id", "title", "startedAtWall", "captureTarget"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "startedAtWall": { "type": "string", "format": "date-time" },
+        "endedAtWall": { "type": "string", "format": "date-time" },
+        "captureTarget": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["game", "video", "app", "device", "other"] },
+            "name": { "type": "string" }
+          }
+        },
+        "recordingFile": { "type": "string" },
+        "obs": {
+          "type": "object",
+          "properties": {
+            "obsVersion": { "type": "string" },
+            "obsWebSocketVersion": { "type": "string" },
+            "recFormat": { "type": "string" },
+            "recTracks": { "type": "string" }
+          }
+        }
+      }
+    },
+    "marks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "seq", "kind", "label", "monoMs", "videoMs"],
+        "properties": {
+          "id": { "type": "string" },
+          "seq": { "type": "integer", "minimum": 1 },
+          "kind": { "enum": ["manual", "vad", "auto"] },
+          "label": { "type": "string" },
+          "hotkey": { "type": "string" },
+          "monoMs": { "type": "number" },
+          "videoMs": { "type": ["number", "null"] },
+          "gameTimeMs": { "type": ["number", "null"] },
+          "anchor": {
+            "type": "object",
+            "required": ["method"],
+            "properties": {
+              "method": { "enum": ["direct", "calibrated", "none"] },
+              "outputDurationMs": { "type": "number" },
+              "rttMs": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "monoMs"],
+        "properties": {
+          "type": {
+            "enum": [
+              "record-started",
+              "record-paused",
+              "record-resumed",
+              "record-stopped",
+              "obs-disconnected",
+              "obs-reconnected",
+              "telemetry-connected",
+              "telemetry-lost",
+              "chapter-create-failed"
+            ]
+          },
+          "monoMs": { "type": "number" },
+          "videoMs": { "type": ["number", "null"] },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "telemetry": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["monoMs", "gameTimeMs", "paused"],
+        "properties": {
+          "monoMs": { "type": "number" },
+          "gameTimeMs": { "type": "number" },
+          "paused": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
