@@ -1,132 +1,298 @@
 # PLAN — next steps
 
-State as of 2026-08-22: build-order steps 1, 3, 4, 6 (tech-stack report §7)
-are scaffolded and verified on synthetic data; nothing has been proven against
-a **live OBS session** or the **live Notion API** yet, and the webcam track
-(step 2), hosted widget (step 5), and hosted shell (step 7) are unbuilt.
-Milestones below are ordered by risk retired per unit of work — M1 and M2
-validate everything already written before new surface is added.
+State as of 2026-08-23 (late): Phase 1 (recorder ↔ OBS ↔ pipeline) is
+validated against a **live OBS session** (M1, `hack/out-m1/`), the recorder
+UX round is live-verified (M5, `hack/out-m5/`), and the **Notion publisher
+has run against the live API** (M2 round 1, `hack/out-m2/`): page creation,
+single-part upload + attach, the free-plan fallback, 150-note batching and
+the transcript toggle all work; a missing `content_type` on upload creation
+was found and fixed; the CLI reads `NOTION_TOKEN`/`PARENT_ID` from `.env`.
+That test also settled a design question: **George's workspace is on the
+Free plan (5 MiB cap) and Notion-hosted video is the wrong carrier anyway**
+→ **decision 2026-08-23: the video on the Notion page is an *unlisted
+YouTube upload* of the condensed cut, with chapters auto-generated from the
+notes in the video description** (tech-stack report §5.0 "Decision
+2026-08-23", risk 9). The LGPL FFmpeg question is settled and verified (M6,
+`hack/out-m6/`).
+
+Research facts that shape M2 (sources in the tech-stack report §9, 77–87):
+
+- Notion renders a `video` block whose `external.url` is a YouTube
+  `watch?v=` link as the real YouTube player (documented); use `video`,
+  not `embed`. Unlisted videos are embeddable; private ones are not.
+- Chapters = timestamps in the description: first must be `0:00`, ≥ 3
+  timestamps, ascending, each chapter ≥ 10 s; description ≤ 5 000 **bytes**,
+  no `<`/`>`. They render on unlisted videos.
+- Deep links: `https://youtu.be/<id>?t=<seconds>` (`&t=` on `watch?v=`).
+- **API uploads from a Google Cloud project that has not passed YouTube's
+  compliance audit are locked to private, no appeal** (projects created
+  after 2020-07-28); the lock is reported to override `unlisted` too. The
+  audit is free but wants an https site + privacy-policy URL and takes
+  weeks. `youtube.upload` is a sensitive OAuth scope; while the consent
+  screen is in *Testing*, refresh tokens expire after 7 days. Quota is a
+  non-issue (`videos.insert` = 1 unit of its own 100/day bucket).
+- Unverified, to test live: that an API-created Notion `video` block
+  renders an **unlisted** (not public) video, and that `&t=` inside the
+  block URL is honored.
+
+Consequence: **manual Studio upload of the pipeline's output is the product
+path** (unlisted immediately, ~1 min per session); the API uploader is an
+opt-in after the audit. Milestones are ordered by risk retired per unit of
+work. Completed items are deleted from this file, not checked off.
+
+Paths used below (all exist today):
+
+- `REPORT_SMALL` = `C:\Users\George\Videos\PlaytestSessions\2026-08-23_172859_m5-live\report`
+  (6 s, 3 notes, no speech — too short for chapters; the *graceful* case)
+- `REPORT_BIG` = `C:\Users\George\Videos\PlaytestSessions\2026-08-23_114134_m1-live\report`
+  (1:30, 6 dictated notes + transcript; notes at 0:08, 0:19, 0:24, 0:49,
+  0:59, 1:21 in condensed time — the chapter-folding case: 0:08 is < 10 s
+  after `0:00`, 0:24 is < 10 s after 0:19, 1:21 is < 10 s before the end)
+- Test pages already under the `PARENT_ID` page (archive with
+  `node hack/notion-page-dump.mjs <url> --archive`): `m5-live` ×2,
+  `m5-live (stress 150 notes)`, `m1-live`.
 
 ---
 
-## M1 — First real recording session (validate Phase 1 end-to-end)
+## M2 — YouTube carrier: chapters kit + Notion embed (finish Phase 4)
 
-The recorder boots and compiles but has never driven a real recording. Run a
-real session and fix what breaks:
+### M2.1 Pipeline emits the YouTube kit (code, no account needed)
 
-- [ ] `npm run recorder` → connect to OBS → preflight. **Verify the profile
-      parameter names/values against OBS 32.2** (`Output/Mode=Advanced`,
-      `AdvOut/RecFormat2=hybrid_mp4`, `AdvOut/RecTracks`) — these were written
-      from docs, not tested; confirm "Apply recommended settings" actually
-      flips the OBS UI after restart.
-- [ ] Route mic to track 2 in OBS Advanced Audio Properties; record ~2 min of
-      anything with several F8/F9 presses + dictated notes.
-- [ ] Verify the sidecar: marks have `anchor.method: "direct"`, sane `videoMs`,
-      small `rttMs`. Cross-check against the Hybrid MP4 chapters
-      (`ffprobe -show_chapters`) — expect ≤ ~100 ms disagreement.
-- [ ] `playtest-pipeline process <session dir>` → open `report/report.html`,
-      confirm notes text (faster-whisper is installed), seek↔notes sync, and
-      that dictated sentences are not cut (needs M5's VAD for full behavior).
-- [ ] Pause/resume in OBS mid-session → confirm `record-paused/resumed` events,
-      calibration reset, and correct mark anchors after resume.
-- [ ] Kill OBS mid-session (Task Manager) → confirm journal-based recovery:
-      pipeline rebuilds from `session.journal.jsonl`, Hybrid MP4 file is
-      salvageable, chapters absent (expected).
-- [ ] Stop the recording from OBS's own UI (not the app) → session finalizes.
-- [ ] Real game test (exclusive fullscreen if possible): does `globalShortcut`
-      F8 fire? Is the key swallowed (expected)? Then switch hotkey mode to
-      `raw-input` and verify marks flow from `capture-helper` (key NOT
-      swallowed; wall-clock mapping accuracy acceptable).
+- [ ] **`report/youtube/description.txt` + `title.txt`** from `report.py`
+      (or a new `youtube.py`), built from `report_data.json`:
+      1. Title: `<session.title> — playtest <YYYY-MM-DD>` (≤ 100 chars).
+      2. Description, in this order: one summary line (`N notes · original
+         m:ss · condensed m:ss · recorded <date>`), a blank line, the
+         **chapter list**, a blank line, `Generated by Playtest Recorder`.
+      3. Chapter list algorithm (`build_chapters(notes, cutmap,
+         condensed_duration_ms)` — pure function, unit-tested):
+         - convert each note to condensed time with the cut map
+           (`originalToCondensedMs` semantics: notes whose window was
+           dropped map to `None` and are skipped);
+         - chapter title = `LABEL — <first sentence of note.text>` truncated
+           to 80 chars, `<`/`>` replaced, empty text → `LABEL`;
+         - always start with `0:00` (title = first note's title if it lands
+           < 10 s, else `Session start`);
+         - walk notes ascending; a note < 10 s after the previous chapter
+           **folds** into it (title becomes `A · B`, capped at 80 chars);
+           a note < 10 s before the end of the video folds into the
+           previous chapter too;
+         - if fewer than 3 chapters survive, still write the lines
+           (YouTube shows them as plain clickable timestamps) and add the
+           line `(fewer than 3 chapters — YouTube will not show a chapter
+           bar)`;
+         - timestamp format `m:ss` / `h:mm:ss` (`formatTimecode` semantics),
+           total description ≤ 4 800 bytes UTF-8: drop trailing chapters
+           beyond the cap and append `… and N more notes in the Notion
+           report`.
+         Expected for `REPORT_BIG`: `0:00 MARK — 1. Note. The lighting…`
+         (m1 folded in), `0:19 MARK — … · ISSUE — …` (m3 folded in),
+         `0:49 MARK — …`, `0:59 MARK — … · MARK — Final note…` (m6 folded
+         in) → 4 chapters, all ≥ 10 s. For `REPORT_SMALL`: `0:00` + the
+         "fewer than 3" line.
+      4. Tests in `pipeline/tests/test_youtube.py`: the folding rules, the
+         3-chapter minimum message, the byte cap, a cut map that drops a
+         note, `<>` stripping.
+      5. `process` prints the kit path after "Done." with the three manual
+         steps (upload → Unlisted → paste), and `report.html` gets nothing
+         new (the self-hosted page stays independent of YouTube).
 
-**Exit criterion:** one real session produces a correct report.html with no
-hand-editing. File bugs found as TODOs in code or fix inline.
+### M2.2 Publisher takes the YouTube URL (code, needs `.env` only)
 
-## M2 — Notion publisher live test (finish Phase 4)
+- [ ] **`playtest-notion publish <reportDir> --youtube <url>`**
+      (`packages/notion-publisher`):
+      1. Accept `https://youtu.be/<id>`, `https://www.youtube.com/watch?v=<id>`
+         and a bare 11-char id; normalize to `https://www.youtube.com/watch?v=<id>`
+         for the block and `https://youtu.be/<id>?t=<s>` for links.
+      2. `videoExternalBlock(url)` in `blocks.ts`
+         (`{type:'video', video:{type:'external', external:{url}}}`), placed
+         where the upload block goes today; `--youtube` implies no file upload
+         (`--no-upload` stays for "no video at all").
+      3. `noteBlock(note, {youtube})`: link = `youtu.be/<id>?t=<floor(condensed
+         seconds)>` using the cut map from `report_data.json` (notes with no
+         condensed position get no link); when `--embed-url` is also given the
+         self-hosted `?t=<original s>` link wins for the timestamp and the
+         YouTube link is appended as `▶`.
+      4. Summary callout gains `· video: YouTube (unlisted)`.
+      5. Tests in `blocks.test.ts`/`cli.test.ts`: URL normalization, condensed
+         vs original seconds, both-links case.
+      6. README + `deploy/README.md`: the 3-step manual upload, then the
+         publish command; the Notion file upload is documented as the
+         fallback only.
 
-`packages/notion-publisher` is written from API docs and has never run:
+### M2.3 Live verification (George: one manual upload, ≈5 min)
 
-- [ ] Create a Notion integration, share a parent page with it, set
-      `NOTION_TOKEN`.
-- [ ] Publish the M1 session's report. Verify: page creation, summary callout,
-      note blocks (timestamps, game time, labels), transcript toggle.
-- [ ] Video upload: test a **<20 MiB** condensed file (single_part) and a
-      **>20 MiB** one (multi_part + complete). The File Upload API version
-      header (`2022-06-28`) may need bumping — check the error body if it 400s.
-- [ ] Confirm behavior on a free workspace (5 MiB cap): the graceful-failure
-      paragraph path.
-- [ ] Batching >100 blocks (session with many marks) and the 350 ms pacing
-      under Notion's ~3 req/s limit.
+- [ ] **Upload `REPORT_BIG` to YouTube by hand**: YouTube Studio → *Create
+      → Upload videos* → drop `REPORT_BIG\condensed.mp4`; title from
+      `title.txt`; paste `description.txt` into *Description*; *Audience*:
+      "No, it's not made for kids"; *Visibility*: **Unlisted**. Wait for
+      processing (SD first, HD a few minutes later). Copy the
+      `https://youtu.be/<id>` link.
+      Check on the watch page: the chapter bar shows 4 segments with the
+      note titles (if not: description has `0:00` first? every gap ≥ 10 s?
+      YouTube sometimes needs a few minutes after processing).
+- [ ] **Publish and verify the Notion page**:
+      ```powershell
+      cd C:\GameDev\video-record-plus-notes
+      npx playtest-notion publish "$REPORT_BIG" --youtube https://youtu.be/<id>
+      node hack/notion-page-dump.mjs <printed url>     # expect `video [external] https://www.youtube.com/watch?v=…`
+      ```
+      Open the page: (1) the video block shows the YouTube player and plays
+      (this is the "unlisted renders via API-created block" check — if it
+      shows "Video unavailable", temporarily set the video to Public and
+      reload to isolate the cause, then record the result in risk 9); (2)
+      click the `[0:19]` note link → YouTube opens at 0:19; (3) chapters
+      are visible in the embedded player's progress bar. Record the result
+      here, then delete the `m1-live` test pages you no longer need.
+- [ ] **Record the outcome** in the tech-stack report risk 9 (c): unlisted
+      render OK/blank, `&t=` honored yes/no.
 
-**Exit criterion:** `playtest-notion publish` produces a complete page from a
-real report bundle.
+**Exit criterion:** a Notion page whose video is the unlisted YouTube upload
+with note chapters, and whose note timestamps jump to the moment on YouTube.
 
-## M3 — Webcam track in the native helper (build-order step 2)
+### M2.4 API uploader (opt-in, gated on Google's audit — later)
 
-The headline "separate webcam track" feature (§3.6, perf §6.2). In
-`helper/capture-helper`, replace the `webcam` stub:
+- [ ] **Compliance audit first** (George; free; weeks): the tool needs a
+      public https page with a privacy policy that has a YouTube-data
+      section (the repo's GitHub Pages is enough), then
+      <https://support.google.com/youtube/contact/yt_api_form>. Until it
+      passes, every API upload is locked private, so do **not** build the
+      uploader as the default path.
+- [ ] **Google Cloud setup** (≈10 min): project → enable *YouTube Data API
+      v3* → OAuth consent screen (External, *Testing*, add your Google
+      account as test user) → Credentials → OAuth client ID, type
+      **Desktop app**; download the JSON to
+      `%APPDATA%\playtest-recorder\youtube-client.json` (gitignored path).
+- [ ] **`playtest-youtube upload <reportDir>`** (`packages/youtube-uploader`,
+      or a `youtube` subcommand of the publisher): installed-app OAuth with
+      loopback redirect (`http://127.0.0.1:<port>`), scope
+      `https://www.googleapis.com/auth/youtube.upload`, tokens cached in
+      `%APPDATA%\playtest-recorder\youtube-token.json`; resumable upload
+      (`uploadType=resumable`, 8 MiB chunks = multiple of 256 KiB, resume on
+      308 via `Content-Range: bytes */total`); body: `snippet.title/description`
+      from the kit, `status: { privacyStatus: 'unlisted', embeddable: true,
+      selfDeclaredMadeForKids: false }`; prints the `youtu.be` URL and
+      writes it to `report/youtube/url.txt` so `playtest-notion publish`
+      can pick it up without `--youtube`. Expect weekly re-consent while
+      the consent screen is in *Testing*.
+- [ ] Recorder: *Publish* button in the Sessions card = upload (if
+      configured) → publish; otherwise open the kit folder + YouTube
+      Studio.
 
-- [ ] Media Foundation `IMFSourceReader` on the selected capture device,
-      native **MJPEG passthrough** written untouched to disk (AVI or raw
-      MJPEG container) — zero live decode/encode. Second-NVENC variant later.
-- [ ] Emit a start-stamp line on stdout (`wall_ms` at first sample) so the
-      recorder can log the webcam↔recording offset into the sidecar; add a
-      `webcam` section to the sidecar schema (shared TS + JSON Schema + Python).
-- [ ] Recorder: spawn/stop the helper with the session; device picker in the
-      settings UI (helper gains a `list-devices` subcommand).
-- [ ] MMCSS registration for the capture thread ("Capture" class, perf §8).
-- [ ] Pipeline: transcode the MJPEG post-session (H.264) and place
-      `webcam.mp4` in the report bundle.
-- [ ] Report page: picture-in-picture corner video, synced via the recorded
-      offset (stretch: toggleable).
+## M3 — Self-hosted embed in Notion (optional now)
 
-## M4 — Hosted widget + Notion Tier 3 (build-order step 5)
+The YouTube carrier removes the need for a hosted URL. `deploy/` stays the
+**self-host-pure** output (Path A) and the only route to bidirectional
+seek↔notes sync. If a team ever wants that *inside* Notion: Caddy +
+cloudflared are installed, `deploy/README.md` Path C has the tunnel recipe,
+`hack/out-m3/local-headers.txt` proves the headers, and the two remaining
+steps are: run the tunnel, `npx playtest-notion publish "$REPORT_BIG"
+--embed-url https://<random>.trycloudflare.com/report.html --no-upload`,
+verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 
-- [ ] Add `?t=<seconds>` deep-link support to the report page (Tier 2 —
-      note-block timestamp links in the publisher already emit `?t=`).
-- [ ] Minimal hosting recipe: nginx (or Caddy) static config serving the
-      report dir with HTTP Range enabled, **no `X-Frame-Options`**, CSP
-      `frame-ancestors 'self' https://*.notion.so` (§5.0 framing caveat).
-- [ ] Publish with `--embed-url`, verify the embed **renders inside Notion
-      manually once** (API-created embeds skip iFramely validation).
-- [ ] Document the self-host-pure path (report.html + nginx, no Notion) as the
-      first-class alternative it is.
+## M4 — STT stretch (Phase 3)
 
-## M5 — STT/VAD completeness (finish Phase 3)
-
-- [ ] `pip install -e "pipeline[vad]"` (silero-vad + torch) and validate the
-      speech-enclosure behavior on the M1 session (dictated notes never cut
-      mid-sentence; VAD-only speech becomes candidate segments).
-- [ ] Decide default model size by timing `small` vs `medium` on this
-      machine's GPU; surface `--model` guidance in the recorder's post-stop
-      summary text.
 - [ ] Stretch: WhisperX forced alignment behind a `[align]` extra for tighter
-      word timing (§4.2); keep faster-whisper as the default path.
+      word timing (§4.2); keep faster-whisper as the default path. Deferred by
+      choice (medium/small already transcribe the M1 notes word-perfectly)
+      **and blocked on this rig**: every WhisperX release ≤3.8.x requires
+      Python <3.14, and the only 3.14-tagged one (3.2.0) pins
+      `ctranslate2==4.4.0`, which has no 3.14 wheel (checked with
+      `pip install --dry-run whisperx`, 2026-08-23; this machine runs 3.14.4).
+      To pursue it: a Python 3.12 venv (`py -3.12 -m venv .venv-align`),
+      `pip install whisperx`, then add `align = ["whisperx>=3.8"]` to
+      `pipeline/pyproject.toml` and an `align_words(wav, segments)` step in
+      `transcribe.py` that runs `whisperx.load_align_model` + `whisperx.align`
+      over the faster-whisper segments and rewrites `words[].startMs/endMs`.
 
-## M6 — Recorder UX hardening (pre-release polish)
+## M5 — Release leftovers
 
-- [ ] Pause/Resume in the tray menu (`PauseRecord`/`ResumeRecord` — anchor
-      service already handles the boundaries).
-- [ ] Session browser in the idle window: list past sessions from
-      `sessionsDir`, buttons to open report / re-run pipeline.
-- [ ] Optional "run pipeline automatically after stop" toggle (spawn
-      `playtest-pipeline` from the app; stream progress into the log pane).
-- [ ] Configurable segment policy (pre/post seconds) and mark labels in
-      settings; persist into the pipeline command.
-- [ ] Packaging: electron-builder NSIS installer; bundle the built
-      `capture-helper.exe`; app icon; `npm run dist`.
-- [ ] First-run wizard skeleton (§8 risk 8): detect OBS install + websocket
-      enabled + password, guide through Hybrid MP4/track-2 setup — the
-      preflight panel already does the checks; wizard is sequencing + copy.
-- [ ] Playtest-rig advisory check panel (perf §8): Game DVR, HAGS, power plan
-      — read-only advisories, never forced.
+- [ ] **Clean-machine installer run** (needs a Windows PC/VM without
+      Node/Rust/Python — a fresh Windows Sandbox works:
+      *Turn Windows features on or off → Windows Sandbox*):
+      1. Copy `apps\recorder\release\Playtest Recorder Setup 0.1.0.exe` in
+         and run it. Expect the SmartScreen "Windows protected your PC"
+         dialog (unsigned) → *More info → Run anyway*; installer offers an
+         install dir; a Start-menu shortcut *Playtest Recorder* appears.
+      2. Launch it: the **setup wizard** must open (fresh config). *Detect
+         OBS* should report not found on a bare machine — that is the
+         expected copy path, not a bug.
+      3. Confirm `<install dir>\resources\capture-helper.exe` exists (default
+         install dir: `C:\Users\<you>\AppData\Local\Programs\Playtest Recorder`),
+         then in *Hotkeys & options* click the Mark key button and
+         press a controller/HID button (or just check the log does **not**
+         say `capture-helper.exe not found`).
+      4. In the Sessions card press *Run pipeline* on any copied session dir
+         (copy one from `PlaytestSessions`): the log must show a clear
+         "`playtest-pipeline` is not recognized…" line and *Pipeline exited
+         with code 1* — the packaged app does not bundle Python by design.
+      5. Optional full run: install OBS 32 + Python 3.11+ in the sandbox,
+         `pip install playtest-pipeline` from a wheel (`python -m build
+         pipeline`), walk the wizard to the end, record 10 s, auto-run.
+- [ ] **Code signing** (removes the SmartScreen warning; costs money):
+      1. Buy an OV code-signing certificate (cheapest sane route in 2026:
+         **Azure Trusted Signing**, ~US$10/month, or an OV cert from
+         SSL.com/Sectigo — those ship on a USB token/cloud HSM since 2023).
+      2. For a PFX-style cert: set `CSC_LINK` (path to the `.pfx`) and
+         `CSC_KEY_PASSWORD` as user env vars and run `npm run dist -w
+         playtest-recorder` — electron-builder signs the exe, the
+         uninstaller and the installer automatically.
+         For Azure Trusted Signing: add to `apps/recorder/package.json`
+         `"build.win.azureSignOptions": { "endpoint", "certificateProfileName",
+         "codeSigningAccountName" }` and log in with `az login` before `dist`.
+      3. Verify: right-click the Setup exe → Properties → *Digital
+         Signatures* tab lists the cert; a fresh machine no longer shows
+         "Unknown publisher".
+- [ ] **Exclusive-fullscreen hotkey check** (manual; M1's injected keys
+      cannot reproduce the real input stack):
+      1. Pick a game that offers *Exclusive fullscreen* (not borderless) in
+         its video settings (e.g. an older DirectX 11 title) and set it.
+      2. Recorder: capture mode **Global shortcut**, start a session, alt-tab
+         into the game, press F8 three times over ~30 s, F9 once, stop from
+         the tray. Sessions card → *Folder* → `session.json`: expect 4 marks
+         with `anchor.method: "direct"`; also note whether the game reacted
+         to F8 (it should not — the key is swallowed).
+      3. Repeat with capture mode **Raw Input helper**: same 4 marks
+         expected, and this time the game *does* see the key.
+      4. Record the title, DX version and both outcomes in the risk table
+         below (risk 3). If a mode misses presses, that title is the
+         reproduction case for tauri#7318 — file it in the table, don't fix
+         blind.
 
-## M7 — Product track (build-order step 7 + business, later)
+## M6 — Product track (build-order step 7 + business, later)
 
-- [ ] LGPL FFmpeg build for distribution (current dev machine uses a GPL gyan
-      build — fine locally, not shippable; §6.2).
-- [ ] Decide hosted/multi-user shell approach (greenfield per §5.6 Branch A).
-- [ ] Telemetry SDK for a second engine (Godot/Unreal snippet) once the Unity
-      one has been used in anger.
+- [ ] **Ship the LGPL FFmpeg** (the *decision* half is done: `media.py`
+      resolves `$PLAYTEST_FFMPEG_DIR` → `playtest_pipeline/bin/` → PATH,
+      `pyproject` ships `bin/*` as package data, `--reencode` prefers
+      `h264_nvenc/amf/qsv` → `libopenh264` and never needs libx264 — all
+      verified against BtbN `ffmpeg-n8.1-latest-win64-lgpl-8.1.zip`,
+      `hack/out-m6/`). Remaining, for a release build:
+      1. Download that zip again (it is in this session's scratchpad only),
+         copy `bin\ffmpeg.exe`, `bin\ffprobe.exe` and `LICENSE.txt` into
+         `pipeline\playtest_pipeline\bin\` (gitignored), `python -m build
+         pipeline`, and check the wheel lists `playtest_pipeline/bin/ffmpeg.exe`
+         (`python -m zipfile -l dist\playtest_pipeline-*.whl | findstr bin/`).
+      2. Decide whether the recorder's installer README says "install the
+         pipeline wheel (FFmpeg included)" or "install FFmpeg (LGPL build) on
+         PATH" — the code supports both; the wheel route is the one that
+         needs no user action.
+      3. Legal review question list (risk 2): add "LGPL dynamic vs. static" —
+         we ship an unmodified static binary as a separate process, which is
+         the mere-aggregation case, but confirm. Add: YouTube API Services
+         Terms + privacy-policy wording for the uploader (M2.4).
+- [ ] **Decide hosted/multi-user shell approach** (§5.6 Branch A vs. B —
+      George's call): write a one-page decision note in
+      `thoughts/shared/claude-code-design/` covering auth, storage of
+      report bundles (S3-style object store + signed URLs vs. self-host
+      only), whether Notion stays the collaboration surface, and whether
+      YouTube stays the video carrier for a multi-tenant product (NDA
+      footage → self-host or Notion upload fallback). Until then the
+      self-host path (`deploy/`) is the product.
+- [ ] Telemetry SDK for a second engine (Godot/Unreal snippet) — gated on the
+      Unity one (`sdk/unity/PlaytestTelemetry.cs`) having been used in a real
+      playtest: enable *Game telemetry* in the recorder, run a session with
+      the Unity game serving `docs/telemetry-protocol.md`, confirm marks carry
+      `gameTimeMs`. Only then port the ~60-line snippet.
 
 ---
 
@@ -134,9 +300,14 @@ The headline "separate webcam track" feature (§3.6, perf §6.2). In
 
 | Risk | Mitigation status |
 |---|---|
-| OBS crash loses MP4 chapters (§ risk 1) | Sidecar journal implemented; **test in M1** |
-| GPL boundary is FSF doctrine, not case law (risk 2) | Deferred to M7 legal review |
-| Exclusive-fullscreen hotkey failures (risk 3 / tauri#7318) | Raw Input fallback built; **verify per title in M1** |
-| Notion upload caps / embed validation (risk 7) | Handled in publisher; **verify in M2/M4** |
-| AMD/Intel encoder parity unknown (perf risk 4) | Untested — needs a non-NVIDIA rig eventually |
-| Preflight profile-parameter names unverified against OBS 32 | **M1 first item** |
+| GPL boundary is FSF doctrine, not case law (risk 2) | FFmpeg side settled in code (LGPL build verified, separate process, bundled-binary path); legal review still M6 |
+| Exclusive-fullscreen hotkey failures (risk 3 / tauri#7318) | Raw Input fallback verified live (injected input); **per-title fullscreen check still manual** (M5, steps above) |
+| Notion upload caps / embed validation (risk 7) | Upload path, Free-plan fallback and batching **verified live 2026-08-23**; `content_type` bug fixed; **carrier moved to YouTube** — Notion upload is the fallback only |
+| YouTube as carrier (risk 9) | API uploads locked private until the compliance audit → manual Studio upload is the product path (M2.3); **unlisted-in-API-created-video-block render and `&t=` honoring unverified** until M2.3 runs; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
+| Notion domain drift | The API returns `app.notion.com` page URLs (2026); `deploy/` CSP allows `*.notion.so`, `*.notion.com`, `*.notion.site` — only matters for the optional M3 embed |
+| AMD/Intel encoder parity unknown (perf risk 4) | Untested — on any non-NVIDIA PC: install OBS, run the recorder's preflight (expects `amf`/`qsv` in the encoder label, no "shared with streaming" warning), then `npx electron hack/live-m5.mjs session` and check `hack/out-m5/session.json` `checks` are all true. Pipeline side: `--reencode` now has `h264_amf`/`h264_qsv` in its chain (args untested on real hardware) |
+| Mark anchor ≠ media timeline (found in M1) | outputDuration ~0.5 s early, chapters 0.7–1.3 s late; sidecar wins; TODO in `marks.ts` if tighter sync ever needed |
+| OBS pause needs dedicated rec encoder + restart (found in M1) | Preflight warns; tray Pause detects the silent no-op and logs `record-pause-ignored` instead of faking a pause (live-verified with a dedicated encoder in M5) |
+| torchaudio ≥ 2.9 needs torchcodec for audio I/O (found in M4) | Pipeline reads `mic.wav` with the stdlib instead of `silero_vad.read_audio`; the `[vad]` extra installs clean |
+| Python 3.14 on the dev rig | faster-whisper 1.2.1 + silero-vad + torch 2.13 cu126 all fine; **WhisperX has no 3.14-compatible release** (M4) — use a 3.12 venv for anything that needs it |
+| Installer built and smoke-run only on the dev rig | Unsigned; monorepo hoisting handled by electron-builder 26's workspace detection — **clean-machine run + signing pending (M5, steps above)** |

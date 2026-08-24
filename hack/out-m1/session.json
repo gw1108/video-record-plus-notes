@@ -1,0 +1,119 @@
+{
+  "id": "2026-08-23_114134_m1-live",
+  "title": "m1-live",
+  "sessionDir": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_114134_m1-live",
+  "recordingFile": "C:/Users/George/Videos/2026-08-23 11-41-34.mp4",
+  "durationMs": 99743,
+  "markCount": 6,
+  "marks": [
+    {
+      "id": "m1",
+      "seq": 1,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13275879.2544,
+      "videoMs": 8337,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 8341,
+        "rttMs": 8.106699999421835
+      }
+    },
+    {
+      "id": "m2",
+      "seq": 2,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13287025.6799,
+      "videoMs": 19473,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 19477,
+        "rttMs": 7.8970999997109175
+      }
+    },
+    {
+      "id": "m3",
+      "seq": 3,
+      "kind": "manual",
+      "label": "issue",
+      "hotkey": "F9",
+      "monoMs": 13292433.3641,
+      "videoMs": 24895,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 24899,
+        "rttMs": 8.481000000610948
+      }
+    },
+    {
+      "id": "m4",
+      "seq": 4,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13324553.7224,
+      "videoMs": 49003,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 49007,
+        "rttMs": 7.971599999815226
+      }
+    },
+    {
+      "id": "m5",
+      "seq": 5,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13334953.4455,
+      "videoMs": 59430,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 59434,
+        "rttMs": 7.9755999986082315
+      }
+    },
+    {
+      "id": "m6",
+      "seq": 6,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13356662.9744,
+      "videoMs": 81118,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 81122,
+        "rttMs": 8.67030000127852
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "record-started",
+      "monoMs": 13266245.0864
+    },
+    {
+      "type": "record-paused",
+      "monoMs": 13306594.0673
+    },
+    {
+      "type": "record-resumed",
+      "monoMs": 13314605.6893
+    },
+    {
+      "type": "record-stopped",
+      "monoMs": 13365984.3945
+    }
+  ],
+  "pipelineCommand": "playtest-pipeline process \"C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_114134_m1-live\""
+}

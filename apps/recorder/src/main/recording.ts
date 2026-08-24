@@ -17,11 +17,14 @@ import {
   type SessionInfo,
 } from '@playtest/shared';
 import type {
+  HotkeyBinding,
+  PipelineConfig,
   RecorderConfig,
   SessionSummary,
   StartSessionRequest,
   StatusSnapshot,
 } from '../common/ipc-contract.js';
+import { DEFAULT_PIPELINE, normalizePipeline } from './config.js';
 import type { ObsClient, RecordStateEvent } from './obs.js';
 import { MarkAnchorService } from './marks.js';
 import { SidecarWriter } from './sidecar.js';
@@ -30,8 +33,30 @@ import { findHelperBinary, RawInputHelper } from './helper.js';
 import { monoMs, uniqueSessionId } from './util.js';
 
 const START_TIMEOUT_MS = 10_000;
+/** OBS answers PauseRecord in tens of ms; a whole second of silence is a no-op. */
+const PAUSE_TIMEOUT_MS = 2_000;
 const TELEMETRY_LOG_INTERVAL_MS = 5000;
 const RECONNECT_INTERVAL_MS = 3000;
+
+/** Quote one argument for the shell command line the user copies/we spawn. */
+function shellQuote(value: string): string {
+  return /[\s"]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+}
+
+/**
+ * The post-session command for one session dir, with the configured segment
+ * policy and STT model baked in. The pipeline is the same CLI the user can
+ * run by hand — the app only ever assembles this line (perf §1).
+ */
+export function buildPipelineCommand(config: PipelineConfig, sessionDir: string): string {
+  const parts = [config.command, 'process', shellQuote(sessionDir)];
+  const d = DEFAULT_PIPELINE;
+  if (config.preSeconds !== d.preSeconds) parts.push('--pre', String(config.preSeconds));
+  if (config.postSeconds !== d.postSeconds) parts.push('--post', String(config.postSeconds));
+  if (config.mergeGapSeconds !== d.mergeGapSeconds) parts.push('--merge-gap', String(config.mergeGapSeconds));
+  if (config.model !== d.model) parts.push('--model', shellQuote(config.model));
+  return parts.join(' ');
+}
 
 export class SessionController extends EventEmitter {
   private sidecar: SidecarWriter | null = null;
@@ -47,6 +72,9 @@ export class SessionController extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private stoppingViaApp = false;
   private registeredAccelerators: string[] = [];
+  /** Slot ("mark"/"issue") → label written to the sidecar, from config. */
+  private slotLabels: Record<string, string> = {};
+  private pipelineConfig: PipelineConfig = { ...DEFAULT_PIPELINE };
 
   constructor(private readonly obs: ObsClient) {
     super();
@@ -87,6 +115,9 @@ export class SessionController extends EventEmitter {
 
     this.sidecar = new SidecarWriter(sessionDir, session);
     this.seq = 0;
+    // config.ts normalizes labels (falls back to "mark"/"issue"), so no defaults here.
+    this.slotLabels = { ...config.hotkeys.labels };
+    this.pipelineConfig = normalizePipeline(config.pipeline);
 
     try {
       const started = this.waitForOutputState('OBS_WEBSOCKET_OUTPUT_STARTED', START_TIMEOUT_MS);
@@ -94,7 +125,11 @@ export class SessionController extends EventEmitter {
       // timeout would surface as an unhandled rejection ~10 s later.
       started.catch(() => {});
       await this.obs.startRecord();
-      await started;
+      // Journal the output path NOW: if OBS dies mid-session the journal is
+      // all the pipeline has, and without this line it cannot locate the
+      // salvaged Hybrid MP4 (verified live in M1's crash test).
+      const outputPath = await started;
+      if (outputPath) this.sidecar.updateSession({ recordingFile: outputPath });
     } catch (err) {
       this.discardFailedStart(sessionDir);
       throw err;
@@ -143,36 +178,60 @@ export class SessionController extends EventEmitter {
   }
 
   private registerHotkeys(config: RecorderConfig): void {
-    const keys: Record<string, string> = {
+    const bindings: Record<string, HotkeyBinding> = {
       mark: config.hotkeys.mark,
       issue: config.hotkeys.issue,
     };
-    if (config.hotkeys.mode === 'raw-input') {
-      const binary = findHelperBinary(config.helperPath);
-      if (!binary) {
-        this.log('warn', 'raw-input mode: capture-helper.exe not found; falling back to globalShortcut. Build it with: cargo build --release (in helper/capture-helper).');
+    // Keyboard bindings follow the configured capture mode. Everything else
+    // (mouse/gamepad/HID) can only be seen by the helper, whatever the mode.
+    // Keyboard keys with no Electron accelerator name also need the helper.
+    const viaShortcut: Array<{ label: string; accelerator: string; display: string }> = [];
+    const viaHelper: Record<string, HotkeyBinding> = {};
+    for (const [label, binding] of Object.entries(bindings)) {
+      if (
+        binding.type === 'keyboard' &&
+        binding.accelerator &&
+        config.hotkeys.mode === 'global-shortcut'
+      ) {
+        viaShortcut.push({ label, accelerator: binding.accelerator, display: binding.label });
       } else {
+        viaHelper[label] = binding;
+      }
+    }
+
+    if (Object.keys(viaHelper).length > 0) {
+      const binary = findHelperBinary(config.helperPath);
+      if (binary) {
         this.helper = new RawInputHelper();
-        this.helper.on('hotkey', (e) => void this.mark(e.label, keys[e.label], e.pressMonoMs));
+        this.helper.on('hotkey', (e) => void this.mark(e.label, bindings[e.label]?.label, e.pressMonoMs));
         this.helper.on('error', (err: Error) => this.log('warn', `helper: ${err.message}`));
         this.helper.on('log', (line: string) => this.log('info', `helper: ${line}`));
         this.helper.on('exit', (code: number | null) =>
           this.log(code === 0 ? 'info' : 'warn', `helper exited (code ${code})`),
         );
-        this.helper.start(binary, keys);
-        return;
+        this.helper.start(binary, viaHelper);
+      } else {
+        // Keyboard bindings degrade to globalShortcut; the rest are lost.
+        for (const [label, binding] of Object.entries(viaHelper)) {
+          if (binding.type === 'keyboard' && binding.accelerator) {
+            this.log('warn', `capture-helper.exe not found; ${binding.label} falls back to globalShortcut (key is swallowed). Build it with: cargo build --release (in helper/capture-helper).`);
+            viaShortcut.push({ label, accelerator: binding.accelerator, display: binding.label });
+          } else {
+            this.log('warn', `${binding.label} (${label}) needs capture-helper.exe and will NOT fire this session. Build it with: cargo build --release (in helper/capture-helper).`);
+          }
+        }
       }
     }
+
     // globalShortcut → Win32 RegisterHotKey. The key is swallowed system-wide:
     // pick keys the game doesn't use (§3.3). Registered only while recording.
-    for (const [label, accel] of Object.entries(keys)) {
-      const pressLabel = label;
-      const ok = globalShortcut.register(accel, () => {
+    for (const { label, accelerator, display } of viaShortcut) {
+      const ok = globalShortcut.register(accelerator, () => {
         const pressMonoMs = monoMs(); // stamp before any async work
-        void this.mark(pressLabel, accel, pressMonoMs);
+        void this.mark(label, display, pressMonoMs);
       });
-      if (ok) this.registeredAccelerators.push(accel);
-      else this.log('warn', `Could not register hotkey ${accel} (in use by another app?)`);
+      if (ok) this.registeredAccelerators.push(accelerator);
+      else this.log('warn', `Could not register hotkey ${display} (in use by another app?)`);
     }
   }
 
@@ -183,9 +242,13 @@ export class SessionController extends EventEmitter {
     this.helper = null;
   }
 
-  /** Record a mark. Callable from hotkey, tray menu, or IPC. */
-  async mark(label: string, hotkey?: string, pressMonoMs = monoMs()): Promise<Mark | null> {
+  /**
+   * Record a mark. Callable from hotkey, tray menu, or IPC. `slot` is the
+   * binding slot ("mark"/"issue"); the label stored is the configured one.
+   */
+  async mark(slot: string, hotkey?: string, pressMonoMs = monoMs()): Promise<Mark | null> {
     if (this.state === 'idle' || !this.sidecar) return null;
+    const label = this.slotLabels[slot] ?? slot;
     this.seq += 1;
     const seq = this.seq;
     const { videoMs, anchor } = await this.anchor.anchorPress(pressMonoMs);
@@ -210,6 +273,47 @@ export class SessionController extends EventEmitter {
       this.logEvent('chapter-create-failed', String(err));
     });
     return mark;
+  }
+
+  /**
+   * Pause the OBS recording. The state flips to 'paused' from the PAUSED
+   * event (onRecordState), never from the request result: OBS accepts
+   * PauseRecord and does nothing when the recording shares the stream
+   * encoder (M1 finding), so a missing transition is reported as a no-op
+   * rather than shown as "paused" while the file keeps growing.
+   */
+  async pause(): Promise<void> {
+    if (this.state !== 'recording') throw new Error('Not recording.');
+    if (!this.obs.connected) throw new Error('Not connected to OBS.');
+    const paused = this.waitForOutputState('OBS_WEBSOCKET_OUTPUT_PAUSED', PAUSE_TIMEOUT_MS);
+    paused.catch(() => {});
+    await this.obs.pauseRecord();
+    try {
+      await paused;
+    } catch {
+      let stillRecording = true;
+      try {
+        stillRecording = !(await this.obs.sampleRecordStatus()).paused;
+      } catch {
+        // can't tell; report the no-op (the state machine follows events anyway)
+      }
+      if (stillRecording) {
+        this.logEvent('record-pause-ignored');
+        throw new Error(
+          'OBS ignored the pause — the recording shares the stream encoder. ' +
+            'Set a dedicated encoder under Settings → Output → Recording and restart OBS. Recording continues.',
+        );
+      }
+    }
+  }
+
+  async resume(): Promise<void> {
+    if (this.state !== 'paused') throw new Error('Not paused.');
+    if (!this.obs.connected) throw new Error('Not connected to OBS.');
+    const resumed = this.waitForOutputState('OBS_WEBSOCKET_OUTPUT_RESUMED', PAUSE_TIMEOUT_MS);
+    resumed.catch(() => {});
+    await this.obs.resumeRecord();
+    await resumed;
   }
 
   async stop(): Promise<SessionSummary> {
@@ -255,7 +359,7 @@ export class SessionController extends EventEmitter {
       markCount: data.marks.length,
       marks: data.marks,
       events: data.events,
-      pipelineCommand: `playtest-pipeline process "${sidecar.sessionDir}"`,
+      pipelineCommand: buildPipelineCommand(this.pipelineConfig, sidecar.sessionDir),
     };
 
     this.sidecar = null;

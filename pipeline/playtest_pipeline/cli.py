@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import report as report_mod
 from .condense import CondenseResult, condense
-from .media import probe_chapters, probe_duration_ms, extract_audio_track
+from .media import probe_chapters, probe_duration_ms, extract_audio_track, tool_origin
 from .plan import (
     DEFAULT_MERGE_GAP_MS,
     DEFAULT_POST_MS,
@@ -32,6 +32,12 @@ from .plan import (
 from .session import Session, load_session, resolve_recording
 from .transcribe import stt_available, transcribe
 from .vad import detect_speech, vad_available
+
+
+# Measured on an RTX 2060 6 GB (pipeline/README.md "Model choice"): medium is
+# ~2x slower than small on the GPU for marginally cleaner wording; on CPU only
+# small stays comfortably faster than realtime.
+MODEL_TIP = "  tip: --model medium for better accuracy (~2x slower on a GPU); --model small on CPU"
 
 
 def _stage(name: str) -> None:
@@ -64,6 +70,7 @@ def cmd_process(args: argparse.Namespace) -> int:
     anchored = [m for m in session.marks if m.video_ms is not None]
     print(f"  {session.title} — recording {recording.name}, {duration_ms / 1000:.0f}s, "
           f"{len(anchored)}/{len(session.marks)} anchored marks")
+    print(f"  ffmpeg: {tool_origin('ffmpeg')}")
     # After an OBS crash the salvaged MP4 can be shorter than late (calibrated)
     # marks: no video exists for them. Keep them out of the cut but list them —
     # silently dropping a mark would look like a recorder bug.
@@ -103,6 +110,7 @@ def cmd_process(args: argparse.Namespace) -> int:
     _stage("Speech-to-text (faster-whisper)")
     transcript_path = pipeline_dir / "transcript.json"
     transcript: dict | None = None
+    stt_ran = False
     if args.skip_stt:
         print("  skipped (--skip-stt)")
     elif (cached := _load_or_none(transcript_path)) is not None and not args.force:
@@ -116,6 +124,7 @@ def cmd_process(args: argparse.Namespace) -> int:
         transcript = transcribe(mic_wav, model_size=args.model)
         _write_json(transcript_path, transcript)
         print(f"  {len(transcript['segments'])} segments -> {transcript_path.name}")
+        stt_ran = True
 
     _stage("Plan segments (mark→segment policy §5.4)")
     pre_ms = round(args.pre * 1000)
@@ -194,8 +203,10 @@ def cmd_process(args: argparse.Namespace) -> int:
 
     print("\nDone. Open the report:")
     print(f"  {report_dir / 'report.html'}")
-    print("Publish to Notion (needs NOTION_TOKEN):")
-    print(f"  playtest-notion publish \"{report_dir}\" --parent-page <notion-page-id>")
+    if stt_ran:
+        print(MODEL_TIP)
+    print("Publish to Notion (NOTION_TOKEN + PARENT_ID from .env or the environment):")
+    print(f"  playtest-notion publish \"{report_dir}\"")
     return 0
 
 
@@ -237,7 +248,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="seconds kept after each mark (default 10)")
     p.add_argument("--merge-gap", type=float, default=DEFAULT_MERGE_GAP_MS / 1000,
                    help="merge segments closer than this many seconds (default 1)")
-    p.add_argument("--model", default="small", help="faster-whisper model size (default small)")
+    p.add_argument("--model", default="small",
+                   help="faster-whisper model size (default small): small on any machine; "
+                        "medium for slightly better accuracy on a GPU (~2x slower, ~2 GB VRAM)")
     p.add_argument("--force", action="store_true", help="ignore cached stage outputs")
     p.set_defaults(func=cmd_process)
 

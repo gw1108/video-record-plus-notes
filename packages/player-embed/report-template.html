@@ -168,6 +168,35 @@ const DATA = /*__REPORT_DATA__*/null;
   // ---- video ----
   video.src = DATA.video.file;
 
+  // ---- ?t=<seconds> deep link (Tier-2 timestamp links, tech-stack §5.0) ----
+  // `t` is ORIGINAL-recording seconds — the Notion publisher emits
+  // `?t=${floor(note.videoMs / 1000)}` — and is translated through the cut
+  // map by seekOriginal (a time inside a cut gap snaps to the next kept
+  // segment). Accepts plain/float seconds (`?t=95`, `?t=95.5`), `1h2m3s`
+  // style (`?t=1m35s`), and `#t=…` in the hash as a fallback. The seek waits
+  // for loadedmetadata; if the browser blocks autoplay the playhead is still
+  // positioned and the matching note highlighted (syncNotes runs on `seeked`).
+  function parseTimeSpec(raw) {
+    if (raw === null || raw === undefined) return null;
+    const s = String(raw).trim().toLowerCase();
+    if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s?)?$/.exec(s);
+    if (!m || !(m[1] || m[2] || m[3])) return null;
+    return (+(m[1] || 0)) * 3600 + (+(m[2] || 0)) * 60 + parseFloat(m[3] || '0');
+  }
+  function deepLinkSeconds() {
+    const query = new URLSearchParams(location.search).get('t');
+    const hash = new URLSearchParams(location.hash.replace(/^#/, '')).get('t');
+    const t = parseTimeSpec(query !== null ? query : hash);
+    return t !== null && isFinite(t) && t >= 0 ? t : null;
+  }
+  const deepLinkT = deepLinkSeconds();
+  if (deepLinkT !== null) {
+    const go = () => seekOriginal(deepLinkT * 1000);
+    if (video.readyState >= 1) go();
+    else video.addEventListener('loadedmetadata', go, { once: true });
+  }
+
   // ---- segment-skip module (~30 lines, tech-stack report §5.1) ----
   // Only meaningful when the file is the FULL recording: while enabled,
   // leaving a marked range jumps the playhead to the next range's start.

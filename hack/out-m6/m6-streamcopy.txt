@@ -1,0 +1,33 @@
+
+== Load session
+  m5-live — recording 2026-08-23 17-28-59.mp4, 6s, 3/3 anchored marks
+  ffmpeg: PLAYTEST_FFMPEG_DIR (C:\Users\George\AppData\Local\Temp\claude\C--GameDev-video-record-plus-notes\fdb15107-fff0-480b-a7d4-6e6d6104f529\scratchpad\ffmpeg-lgpl\ffmpeg-n8.1-latest-win64-lgpl-8.1\bin\ffmpeg.exe)
+
+== Extract mic track (OBS audio track 2)
+  -> C:\Users\George\AppData\Local\Temp\claude\C--GameDev-video-record-plus-notes\fdb15107-fff0-480b-a7d4-6e6d6104f529\scratchpad\m6-copy\pipeline\mic.wav
+
+== Voice activity detection (Silero)
+  0 speech segments -> vad.json
+
+== Speech-to-text (faster-whisper)
+  transcribing with model 'small' (this can take a few minutes)…
+  0 segments -> transcript.json
+
+== Plan segments (mark→segment policy §5.4)
+  3 mark windows + 0 VAD-only windows -> 1 merged segments, keeping 6s of 6s (100%)
+
+== Condensed export (FFmpeg cut + concat)
+  segment 1/1: requested 0-5964ms, actual 0-6005ms
+  -> C:\Users\George\AppData\Local\Temp\claude\C--GameDev-video-record-plus-notes\fdb15107-fff0-480b-a7d4-6e6d6104f529\scratchpad\m6-copy\report\condensed.mp4 (6s)
+
+== Report bundle
+  -> C:\Users\George\AppData\Local\Temp\claude\C--GameDev-video-record-plus-notes\fdb15107-fff0-480b-a7d4-6e6d6104f529\scratchpad\m6-copy\report\report.html
+    [0:01] bug: (no speech)
+    [0:01] fun: (no speech)
+    [0:03] fun: (no speech)
+
+Done. Open the report:
+  C:\Users\George\AppData\Local\Temp\claude\C--GameDev-video-record-plus-notes\fdb15107-fff0-480b-a7d4-6e6d6104f529\scratchpad\m6-copy\report\report.html
+  tip: --model medium for better accuracy (~2x slower on a GPU); --model small on CPU
+Publish to Notion (NOTION_TOKEN + PARENT_ID from .env or the environment):
+  playtest-notion publish "C:\Users\George\AppData\Local\Temp\claude\C--GameDev-video-record-plus-notes\fdb15107-fff0-480b-a7d4-6e6d6104f529\scratchpad\m6-copy\report"

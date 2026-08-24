@@ -13,6 +13,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { app } from 'electron';
+import type { ObsInstallInfo } from '../common/ipc-contract.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -67,6 +68,31 @@ export function readObsWebsocketSettings(): ObsWebsocketSettings {
   } catch {
     return empty;
   }
+}
+
+/**
+ * Locate the OBS install for the first-run wizard: the installer's registry
+ * key (`HKLM\SOFTWARE\OBS Studio`, default value = install dir), then the
+ * default location. OBS is a separately installed program on purpose (the
+ * process boundary is the GPL boundary, tech-stack §3.2) — we only detect it.
+ */
+export async function findObsInstall(): Promise<ObsInstallInfo> {
+  const running = await obsIsRunning();
+  const candidates: string[] = [];
+  try {
+    const { stdout } = await execFileAsync('reg', ['query', 'HKLM\\SOFTWARE\\OBS Studio', '/ve'], {
+      windowsHide: true,
+    });
+    const match = /REG_SZ\s+(.+)$/m.exec(stdout);
+    if (match) candidates.push(match[1]!.trim());
+  } catch {
+    // not installed via the installer (portable build) — try the default path
+  }
+  candidates.push(join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'obs-studio'));
+  for (const dir of candidates) {
+    if (existsSync(join(dir, 'bin', '64bit', 'obs64.exe'))) return { installed: true, path: dir, running };
+  }
+  return { installed: running, running };
 }
 
 /** True when an OBS process is up — its exit would clobber our file write. */

@@ -99,8 +99,8 @@ export async function publish(opts: PublishOptions): Promise<string> {
   console.log(`\nPublished: ${url}`);
   if (opts.embedUrl) {
     console.log(
-      'Reminder: the embed URL must be reachable by page viewers and must allow framing by notion.so ' +
-        '(no X-Frame-Options; CSP frame-ancestors including https://*.notion.so). Verify rendering once manually.',
+      'Reminder: the embed URL must be reachable by page viewers and must allow framing by Notion ' +
+        '(no X-Frame-Options; CSP frame-ancestors including https://*.notion.so https://*.notion.com https://*.notion.site). Verify rendering once manually.',
     );
   }
   return url;

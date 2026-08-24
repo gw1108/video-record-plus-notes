@@ -1,0 +1,36 @@
+{
+  "id": "2026-08-23_114523_m1-obs-ui-stop",
+  "title": "m1-obs-ui-stop",
+  "sessionDir": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_114523_m1-obs-ui-stop",
+  "recordingFile": "C:/Users/George/Videos/2026-08-23 11-45-23.mp4",
+  "durationMs": 11485,
+  "markCount": 1,
+  "marks": [
+    {
+      "id": "m1",
+      "seq": 1,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13500485.916,
+      "videoMs": 4416,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 4421,
+        "rttMs": 10.151799999177456
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "record-started",
+      "monoMs": 13495072.6279
+    },
+    {
+      "type": "record-stopped",
+      "monoMs": 13506554.4526
+    }
+  ],
+  "pipelineCommand": "playtest-pipeline process \"C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_114523_m1-obs-ui-stop\""
+}

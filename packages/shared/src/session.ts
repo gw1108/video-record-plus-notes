@@ -64,6 +64,12 @@ export type SessionEventType =
   | 'record-started'
   | 'record-paused'
   | 'record-resumed'
+  /**
+   * PauseRecord was accepted by OBS but no PAUSED transition followed —
+   * OBS silently ignores pause when the recording shares the stream encoder
+   * (verified live on OBS 32.2, M1). Recording continued uninterrupted.
+   */
+  | 'record-pause-ignored'
   | 'record-stopped'
   | 'obs-disconnected'
   | 'obs-reconnected'

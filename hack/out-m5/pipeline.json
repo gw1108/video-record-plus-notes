@@ -1,0 +1,39 @@
+{
+  "sessionDir": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live",
+  "code": 0,
+  "reportPath": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live\\report\\report.html",
+  "elapsedMs": 12365,
+  "lineCount": 24,
+  "lines": [
+    "== Load session",
+    "  m5-live — recording 2026-08-23 17-28-59.mp4, 6s, 3/3 anchored marks",
+    "== Extract mic track (OBS audio track 2)",
+    "  -> C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live\\pipeline\\mic.wav",
+    "== Voice activity detection (Silero)",
+    "  0 speech segments -> vad.json",
+    "== Speech-to-text (faster-whisper)",
+    "  transcribing with model 'small' (this can take a few minutes)…",
+    "  0 segments -> transcript.json",
+    "== Plan segments (mark→segment policy §5.4)",
+    "  3 mark windows + 0 VAD-only windows -> 1 merged segments, keeping 6s of 6s (100%)",
+    "== Condensed export (FFmpeg cut + concat)",
+    "  segment 1/1: requested 0-5964ms, actual 0-6005ms",
+    "  -> C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live\\report\\condensed.mp4 (6s)",
+    "== Report bundle",
+    "  -> C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live\\report\\report.html",
+    "    [0:01] bug: (no speech)",
+    "    [0:01] fun: (no speech)",
+    "    [0:03] fun: (no speech)",
+    "Done. Open the report:",
+    "  C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live\\report\\report.html",
+    "  tip: --model medium for better accuracy (~2x slower on a GPU); --model small on CPU",
+    "Publish to Notion (needs NOTION_TOKEN):",
+    "  playtest-notion publish \"C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live\\report\" --parent-page <notion-page-id>"
+  ],
+  "checks": {
+    "exitZero": true,
+    "reportPathReturned": true,
+    "listingSeesReport": true,
+    "outputStreamed": true
+  }
+}

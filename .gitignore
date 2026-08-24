@@ -78,6 +78,7 @@ test-results/
 target/
 
 # Python (post-session pipeline)
+pipeline/playtest_pipeline/bin/   # optional bundled LGPL ffmpeg/ffprobe (see pyproject)
 __pycache__/
 *.py[cod]
 *.egg-info/

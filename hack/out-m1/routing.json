@@ -1,0 +1,30 @@
+{
+  "scene": "EntireScreenCapture",
+  "created": true,
+  "verify": {
+    "Mic/Aux": {
+      "1": false,
+      "2": true,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false
+    },
+    "Desktop Audio": {
+      "1": true,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false
+    },
+    "TTS Loopback (m1 test)": {
+      "1": false,
+      "2": true,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false
+    }
+  }
+}

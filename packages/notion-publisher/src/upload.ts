@@ -3,12 +3,28 @@
  * Single-part up to 20 MiB; multi-part above that, 10 MiB parts, 5 GiB cap on
  * paid workspaces (§5.0 plan caveat: free workspaces cap at 5 MiB, which no
  * real condensed video fits — the video must then be hosted externally).
+ *
+ * API facts checked against developers.notion.com (2026-08-23, unverified
+ * live — PLAN M2): the File Upload endpoints accept `Notion-Version:
+ * 2022-06-28` (they predate the 2025-09-03 data-source split, which only
+ * touched database-parented pages; page-parented `pages.create` and
+ * `blocks.children.append` are unaffected). Multi-part parts must be 5–20 MiB
+ * except the last, at most 1000 parts. An upload EXPIRES ONE HOUR after
+ * creation unless attached to a block — publish.ts appends the video block
+ * right after uploadFile() returns, so only a >1 h upload could hit it.
  */
 import { openSync, readSync, closeSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
 
 const API = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
+/**
+ * Declared at creation AND used on every `send` — Notion rejects a part whose
+ * MIME differs from the upload's (found live 2026-08-23: without an explicit
+ * `content_type` it inferred `application/mp4` from the `.mp4` name and then
+ * refused our `video/mp4` part with a 400 validation_error).
+ */
+const CONTENT_TYPE = 'video/mp4';
 const SINGLE_PART_MAX = 20 * 1024 * 1024;
 const PART_SIZE = 10 * 1024 * 1024;
 const HARD_CAP = 5 * 1024 * 1024 * 1024;
@@ -87,8 +103,8 @@ export async function uploadFile(token: string, filePath: string): Promise<strin
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(
       multiPart
-        ? { mode: 'multi_part', number_of_parts: numberOfParts, filename }
-        : { mode: 'single_part', filename },
+        ? { mode: 'multi_part', number_of_parts: numberOfParts, filename, content_type: CONTENT_TYPE }
+        : { mode: 'single_part', filename, content_type: CONTENT_TYPE },
     ),
   });
   const upload = (await createRes.json()) as FileUploadObject;
@@ -100,7 +116,7 @@ export async function uploadFile(token: string, filePath: string): Promise<strin
       const length = Math.min(multiPart ? PART_SIZE : size, size - position);
       const chunk = readChunk(fd, position, length);
       const form = new FormData();
-      form.append('file', new Blob([new Uint8Array(chunk)], { type: 'video/mp4' }), filename);
+      form.append('file', new Blob([new Uint8Array(chunk)], { type: CONTENT_TYPE }), filename);
       if (multiPart) form.append('part_number', String(part + 1));
       await notionFetch(token, `/file_uploads/${upload.id}/send`, { method: 'POST', body: form });
       if (multiPart) {

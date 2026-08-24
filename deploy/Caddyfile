@@ -1,0 +1,26 @@
+# Minimal static host for playtest report bundles (tech-stack report §5.0/§5.5).
+# Caddy's file_server honors HTTP Range requests and does not compress
+# responses unless `encode` is configured, so condensed.mp4 streams as-is.
+# Use a real hostname for automatic HTTPS (Notion is https; the embed URL
+# must be https too). For LAN-only use, `http://reports.lan` skips TLS.
+
+reports.example.com {
+	root * /srv/playtest # e.g. /srv/playtest/2026-08-23_114134_m1-live/report/report.html
+	file_server
+
+	# Framing (tech-stack §5.0): Notion renders API-created embed blocks as
+	# plain iframes and skips iFramely validation — a page that refuses to be
+	# framed silently renders blank. No X-Frame-Options; allow Notion's domains
+	# (the app moved to app.notion.com in 2026 — the API returns those URLs —
+	# and public pages live on *.notion.site).
+	header {
+		-X-Frame-Options
+		Content-Security-Policy "frame-ancestors 'self' https://*.notion.so https://*.notion.com https://*.notion.site"
+	}
+
+	# Explicit MIME for the bundle (Go's built-in table lacks mp4/vtt on some hosts).
+	@mp4 path *.mp4
+	header @mp4 Content-Type video/mp4
+	@vtt path *.vtt
+	header @vtt Content-Type text/vtt
+}

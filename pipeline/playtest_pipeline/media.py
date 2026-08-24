@@ -1,18 +1,60 @@
-"""ffmpeg/ffprobe helpers. Requires both on PATH (LGPL build is sufficient —
-everything here is demuxing, stream copy, PCM, and concat; §6.2)."""
+"""ffmpeg/ffprobe helpers. An LGPL build is sufficient — everything here is
+demuxing, stream copy, PCM, and concat; `--reencode` uses hardware encoders or
+libopenh264, never libx264 (§6.2; verified against BtbN's n8.1 win64-lgpl
+build 2026-08-23, PLAN M6).
+
+Binary lookup, first hit wins:
+  1. `$PLAYTEST_FFMPEG_DIR/ffmpeg[.exe]` — explicit override (installer, CI);
+  2. `playtest_pipeline/bin/ffmpeg[.exe]` — a bundled build dropped into the
+     package (gitignored; `pyproject` ships it as package data when present);
+  3. `ffmpeg` on PATH.
+"""
 
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
+import sys
+from functools import lru_cache
 from pathlib import Path
+
+FFMPEG_DIR_ENV_VAR = "PLAYTEST_FFMPEG_DIR"
+BUNDLED_BIN_DIR = Path(__file__).resolve().parent / "bin"
 
 
 class FfmpegError(RuntimeError):
     pass
 
 
+@lru_cache(maxsize=None)
+def resolve_tool(name: str) -> str:
+    """Absolute path to `ffmpeg`/`ffprobe` per the lookup order above, or the
+    bare name (PATH lookup at call time) when none of the fixed dirs has it."""
+    exe = f"{name}.exe" if sys.platform == "win32" else name
+    override = os.environ.get(FFMPEG_DIR_ENV_VAR)
+    candidates = [Path(override) / exe] if override else []
+    candidates.append(BUNDLED_BIN_DIR / exe)
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which(name) or name
+
+
+def tool_origin(name: str = "ffmpeg") -> str:
+    """Human-readable provenance for logs/`inspect` ("env", "bundled", "PATH")."""
+    path = resolve_tool(name)
+    override = os.environ.get(FFMPEG_DIR_ENV_VAR)
+    if override and Path(path).parent == Path(override):
+        return f"{FFMPEG_DIR_ENV_VAR} ({path})"
+    if Path(path).parent == BUNDLED_BIN_DIR:
+        return f"bundled ({path})"
+    return f"PATH ({path})"
+
+
 def _run(cmd: list[str]) -> str:
+    cmd = [resolve_tool(cmd[0]), *cmd[1:]]
     result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise FfmpegError(

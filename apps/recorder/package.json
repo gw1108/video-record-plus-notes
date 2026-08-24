@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Electron recorder shell: drives OBS over obs-websocket, registers mark hotkeys, writes the session sidecar. UI closes during recording (tray only).",
   "license": "AGPL-3.0-only",
+  "author": "George <georgetw1108@gmail.com>",
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
@@ -10,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "start": "npm run build && electron .",
     "smoke": "npm run build && electron . --smoke",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck",
+    "dist": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@playtest/shared": "^0.1.0",
@@ -18,7 +20,39 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "electron": "^38.0.0",
+    "electron": "38.8.6",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.6.0"
+  },
+  "build": {
+    "appId": "dev.playtest.recorder",
+    "productName": "Playtest Recorder",
+    "directories": {
+      "buildResources": "resources",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "!dist/**/*.tsbuildinfo",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../helper/capture-helper/target/release/capture-helper.exe",
+        "to": "capture-helper.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Playtest Recorder"
+    }
   }
 }

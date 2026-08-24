@@ -1,0 +1,54 @@
+{
+  "initial": [
+    {
+      "id": "obs-version",
+      "label": "OBS 32.2.2",
+      "status": "pass",
+      "detail": "Hybrid MP4 + CreateRecordChapter need OBS 30.2+.",
+      "fixable": false
+    },
+    {
+      "id": "ws-version",
+      "label": "obs-websocket 5.7.4",
+      "status": "pass",
+      "detail": "CreateRecordChapter needs obs-websocket 5.4+.",
+      "fixable": false
+    },
+    {
+      "id": "output-mode",
+      "label": "Advanced output mode",
+      "status": "pass",
+      "detail": "Advanced output mode active.",
+      "fixable": true
+    },
+    {
+      "id": "rec-format",
+      "label": "Recording format: hybrid_mp4",
+      "status": "pass",
+      "detail": "Hybrid MP4 supports chapter marks and crash recovery.",
+      "fixable": true
+    },
+    {
+      "id": "rec-tracks",
+      "label": "Audio tracks bitmask: 3",
+      "status": "pass",
+      "detail": "Track 2 is recorded — route the mic to track 2 only (Advanced Audio Properties) so the pipeline can extract clean mic audio for STT.",
+      "fixable": true
+    },
+    {
+      "id": "encoder",
+      "label": "Recording encoder: obs_nvenc_h264_tex (via stream encoder)",
+      "status": "pass",
+      "detail": "Hardware encoder detected. Also verify in OBS: single-pass, CQP 18–20, psycho-visual tuning OFF, lookahead OFF, NV12, canvas = output resolution, preview disabled (perf report §2.3).",
+      "fixable": false
+    },
+    {
+      "id": "record-dir",
+      "label": "Recording directory: C:\\Users\\George\\Videos",
+      "status": "pass",
+      "detail": "Prefer an internal SSD that is not the game drive (perf report §7).",
+      "fixable": false
+    }
+  ],
+  "after": null
+}

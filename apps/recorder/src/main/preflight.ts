@@ -97,15 +97,28 @@ export async function runPreflight(obs: ObsClient): Promise<PreflightCheck[]> {
     fixable: true,
   });
 
-  const encoder = (await obs.getProfileParameter('AdvOut', 'RecEncoder')) ?? '';
+  // RecEncoder "none" is OBS for "(Use stream encoder)" — the actual encoder
+  // is then AdvOut/Encoder. Verified live on OBS 32.2 (M1): with a shared
+  // stream encoder, PauseRecord silently no-ops and ResumeRecord fails (503),
+  // so pause/resume needs a dedicated recording encoder. Encoder changes made
+  // over obs-websocket only take effect after an OBS restart.
+  let encoder = (await obs.getProfileParameter('AdvOut', 'RecEncoder')) ?? '';
+  const sharedWithStream = !encoder || encoder === 'none';
+  let encoderLabel = encoder;
+  if (sharedWithStream) {
+    encoder = (await obs.getProfileParameter('AdvOut', 'Encoder')) ?? '';
+    encoderLabel = `${encoder || 'unknown'} (via stream encoder)`;
+  }
   const hardware = HARDWARE_ENCODER_HINTS.some((h) => encoder.toLowerCase().includes(h));
   push({
     id: 'encoder',
-    label: `Recording encoder: ${encoder || 'unknown'}`,
-    status: hardware ? 'pass' : 'warn',
-    detail: hardware
-      ? 'Hardware encoder detected. Also verify in OBS: single-pass, CQP 18–20, psycho-visual tuning OFF, lookahead OFF, NV12, canvas = output resolution, preview disabled (perf report §2.3).'
-      : 'Software x264 while a game runs risks frame skipping (perf report §2.1). Select NVENC/AMF/QSV in Settings → Output → Recording.',
+    label: `Recording encoder: ${encoderLabel || 'unknown'}`,
+    status: hardware && !sharedWithStream ? 'pass' : 'warn',
+    detail: !hardware
+      ? 'Software x264 while a game runs risks frame skipping (perf report §2.1). Select NVENC/AMF/QSV in Settings → Output → Recording.'
+      : sharedWithStream
+        ? 'Hardware encoder, but shared with streaming: OBS cannot pause the recording in this mode. Set a dedicated encoder under Settings → Output → Recording and restart OBS.'
+        : 'Hardware encoder detected. Also verify in OBS: single-pass, CQP 18–20, psycho-visual tuning OFF, lookahead OFF, NV12, canvas = output resolution, preview disabled (perf report §2.3).',
     fixable: false,
   });
 

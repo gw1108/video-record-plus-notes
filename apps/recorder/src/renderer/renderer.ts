@@ -1,8 +1,11 @@
 /** Renderer for the setup/review window. Talks to main via window.playtest. */
 import type {
+  HotkeyBinding,
+  KeyModifiers,
   PlaytestApi,
   PreflightCheck,
   RecorderConfig,
+  SessionListEntry,
   SessionSummary,
   StatusSnapshot,
 } from '../common/ipc-contract.js';
@@ -22,14 +25,211 @@ function $<T extends HTMLElement>(id: string): T {
 }
 
 const statusPill = $<HTMLSpanElement>('status-pill');
+const statusDot = $<HTMLSpanElement>('status-dot');
+const statusText = $<HTMLSpanElement>('status-text');
+const progressFill = $<HTMLDivElement>('progress-fill');
 const obsInfo = $<HTMLDivElement>('obs-info');
 const preflightEl = $<HTMLDivElement>('preflight');
 const logEl = $<HTMLPreElement>('log');
 const startBtn = $<HTMLButtonElement>('start-session');
 const preflightBtn = $<HTMLButtonElement>('run-preflight');
 const applyBtn = $<HTMLButtonElement>('apply-recommended');
+const sessionsEl = $<HTMLDivElement>('sessions');
+const advisoriesEl = $<HTMLDivElement>('advisories');
 
 let config: RecorderConfig;
+
+/**
+ * STT model guidance shown with the pipeline command (PLAN M4). Measured on
+ * the dev rig (RTX 2060 6 GB) — see pipeline/README.md "Model choice".
+ */
+const MODEL_TIP = 'Tip: --model medium for better accuracy (~2x slower on a GPU); --model small on CPU.';
+
+// ---------------------------------------------------------------------------
+// Binding capture: each mark action shows a keycap-style button. Clicking it
+// arms capture — the next keyboard key (with Ctrl/Shift/Alt), mouse button, or
+// controller/HID button (via the helper's capture mode) becomes the binding.
+// Esc or losing window focus cancels.
+// ---------------------------------------------------------------------------
+
+type BindSlot = 'mark' | 'issue';
+
+const NO_MODS: KeyModifiers = { ctrl: false, shift: false, alt: false };
+
+function defaultBinding(slot: BindSlot): HotkeyBinding {
+  const n = slot === 'mark' ? 8 : 9;
+  return { type: 'keyboard', vk: 0x70 + n - 1, modifiers: { ...NO_MODS }, accelerator: `F${n}`, label: `F${n}` };
+}
+
+const bindings: Record<BindSlot, HotkeyBinding> = { mark: defaultBinding('mark'), issue: defaultBinding('issue') };
+let capturing: BindSlot | null = null;
+/** Swallow the mouseup/click that trails a mouse-button capture. */
+let suppressMouseUntil = 0;
+
+function bindButton(slot: BindSlot): HTMLButtonElement {
+  return $<HTMLButtonElement>(`bind-${slot}`);
+}
+
+function renderBindButtons(previewMods?: KeyModifiers): void {
+  for (const slot of ['mark', 'issue'] as const) {
+    const btn = bindButton(slot);
+    btn.classList.toggle('listening', capturing === slot);
+    if (capturing === slot) {
+      const held = previewMods ? modifierPrefix(previewMods) : '';
+      btn.textContent = held ? `${held}…` : 'press input…';
+    } else {
+      btn.textContent = bindings[slot].label;
+    }
+  }
+}
+
+function modsFrom(e: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean }): KeyModifiers {
+  return { ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey };
+}
+
+function modifierPrefix(m: KeyModifiers): string {
+  return [m.ctrl && 'Ctrl+', m.shift && 'Shift+', m.alt && 'Alt+'].filter(Boolean).join('');
+}
+
+/**
+ * Electron accelerator name for a physical key, or null for keys
+ * globalShortcut can't register (those still work via the Raw Input helper,
+ * which matches on the virtual-key code instead).
+ */
+function acceleratorKeyName(e: KeyboardEvent): string | null {
+  const code = e.code;
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1\d|2[0-4])$/.test(code)) return code;
+  if (/^Numpad\d$/.test(code)) return `num${code.slice(6)}`;
+  const named: Record<string, string> = {
+    Space: 'Space', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert',
+    Enter: 'Enter', NumpadEnter: 'Enter', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+    NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult',
+    NumpadDivide: 'numdiv', NumpadDecimal: 'numdec', PrintScreen: 'PrintScreen',
+    Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\',
+    Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backquote: '`',
+  };
+  return named[code] ?? null;
+}
+
+function displayKeyName(e: KeyboardEvent): string {
+  const accel = acceleratorKeyName(e);
+  if (accel) return accel;
+  if (e.key.length === 1 && e.key !== ' ') return e.key.toUpperCase();
+  return e.key || e.code;
+}
+
+const MOUSE_BUTTONS: Record<number, { button: 'left' | 'right' | 'middle' | 'x1' | 'x2'; name: string }> = {
+  0: { button: 'left', name: 'Left Click' },
+  1: { button: 'middle', name: 'Middle Click' },
+  2: { button: 'right', name: 'Right Click' },
+  3: { button: 'x1', name: 'Mouse 4' },
+  4: { button: 'x2', name: 'Mouse 5' },
+};
+
+function startCapture(slot: BindSlot): void {
+  if (capturing === slot) return;
+  capturing = slot;
+  renderBindButtons();
+  // Ask the helper (via main) to watch controllers too. Optional: keyboard and
+  // mouse capture keep working when the helper binary isn't built.
+  void api.gamepadCaptureStart().then((r) => {
+    if (!r.ok && r.error) log('info', r.error);
+  });
+}
+
+function stopCapture(): void {
+  capturing = null;
+  void api.gamepadCaptureStop();
+  renderBindButtons();
+}
+
+function finishCapture(binding: HotkeyBinding): void {
+  const slot = capturing;
+  if (!slot) return;
+  bindings[slot] = binding;
+  stopCapture();
+  log('info', `${slot === 'mark' ? 'Mark' : 'Issue'} key bound to ${binding.label}. Save settings to keep it.`);
+  if (bindings.mark.label === bindings.issue.label) {
+    log('warn', 'Mark and Issue are bound to the same input — every press will record both. Rebind one of them.');
+  }
+  if (binding.type === 'mouse' && (binding.button === 'left' || binding.button === 'right') && !modifierPrefix(binding.modifiers)) {
+    log('warn', `${binding.label} fires on EVERY ${binding.button} click during the session — expect a lot of marks.`);
+  }
+  if (binding.type === 'keyboard' && !binding.accelerator) {
+    log('info', `${binding.label} has no global-shortcut name; it will be captured via the Raw Input helper.`);
+  }
+}
+
+function onCaptureKeydown(e: KeyboardEvent): void {
+  if (!capturing) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.repeat) return;
+  if (e.key === 'Escape') {
+    stopCapture();
+    return;
+  }
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+    renderBindButtons(modsFrom(e)); // preview the chord being held
+    return;
+  }
+  const modifiers = modsFrom(e);
+  const keyName = acceleratorKeyName(e);
+  const label = `${modifierPrefix(modifiers)}${displayKeyName(e)}`;
+  finishCapture({
+    type: 'keyboard',
+    vk: e.keyCode,
+    modifiers,
+    accelerator: keyName ? `${modifierPrefix(modifiers)}${keyName}` : null,
+    label,
+  });
+}
+
+function onCaptureMousedown(e: MouseEvent): void {
+  if (!capturing) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const mapped = MOUSE_BUTTONS[e.button];
+  if (!mapped) return;
+  suppressMouseUntil = performance.now() + 400;
+  const modifiers = modsFrom(e);
+  finishCapture({
+    type: 'mouse',
+    button: mapped.button,
+    modifiers,
+    label: `${modifierPrefix(modifiers)}${mapped.name}`,
+  });
+}
+
+function onCaptureSuppress(e: Event): void {
+  if (capturing || performance.now() < suppressMouseUntil) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+function initBindingCapture(): void {
+  // Capture-phase listeners so an armed capture wins over every other control.
+  window.addEventListener('keydown', onCaptureKeydown, true);
+  window.addEventListener('mousedown', onCaptureMousedown, true);
+  for (const type of ['mouseup', 'click', 'auxclick', 'contextmenu'] as const) {
+    window.addEventListener(type, onCaptureSuppress, true);
+  }
+  window.addEventListener('blur', () => {
+    if (capturing) stopCapture();
+  });
+  for (const slot of ['mark', 'issue'] as const) {
+    bindButton(slot).addEventListener('click', () => startCapture(slot));
+    $<HTMLButtonElement>(`bind-${slot}-reset`).addEventListener('click', () => {
+      if (capturing === slot) stopCapture();
+      bindings[slot] = defaultBinding(slot);
+      renderBindButtons();
+    });
+  }
+}
 
 function formatTimecode(ms: number): string {
   const t = Math.floor(Math.max(0, ms) / 1000);
@@ -56,12 +256,31 @@ function fillConfigForm(): void {
   const password = $<HTMLInputElement>('obs-password');
   password.value = '';
   password.placeholder = config.obs.passwordSet ? '(saved — leave blank to keep)' : '';
-  $<HTMLInputElement>('hotkey-mark').value = config.hotkeys.mark;
-  $<HTMLInputElement>('hotkey-issue').value = config.hotkeys.issue;
+  bindings.mark = config.hotkeys.mark;
+  bindings.issue = config.hotkeys.issue;
+  renderBindButtons();
+  $<HTMLInputElement>('label-mark').value = config.hotkeys.labels.mark;
+  $<HTMLInputElement>('label-issue').value = config.hotkeys.labels.issue;
   $<HTMLSelectElement>('hotkey-mode').value = config.hotkeys.mode;
   $<HTMLInputElement>('telemetry-enabled').checked = config.telemetry.enabled;
   $<HTMLInputElement>('telemetry-url').value = config.telemetry.url;
   $<HTMLInputElement>('sessions-dir').value = config.sessionsDir;
+  const pipeline = config.pipeline;
+  $<HTMLInputElement>('pipeline-autorun').checked = pipeline.autoRun;
+  $<HTMLInputElement>('pipeline-command').value = pipeline.command;
+  const model = $<HTMLSelectElement>('pipeline-model');
+  if (![...model.options].some((o) => o.value === pipeline.model)) {
+    model.add(new Option(pipeline.model, pipeline.model)); // custom size from config.json
+  }
+  model.value = pipeline.model;
+  $<HTMLInputElement>('pipeline-pre').value = String(pipeline.preSeconds);
+  $<HTMLInputElement>('pipeline-post').value = String(pipeline.postSeconds);
+  $<HTMLInputElement>('pipeline-merge').value = String(pipeline.mergeGapSeconds);
+}
+
+function numberField(id: string, fallback: number): number {
+  const n = Number($<HTMLInputElement>(id).value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 function readConfigForm(): RecorderConfig {
@@ -73,8 +292,12 @@ function readConfigForm(): RecorderConfig {
       password: $<HTMLInputElement>('obs-password').value,
     },
     hotkeys: {
-      mark: $<HTMLInputElement>('hotkey-mark').value.trim() || 'F8',
-      issue: $<HTMLInputElement>('hotkey-issue').value.trim() || 'F9',
+      mark: bindings.mark,
+      issue: bindings.issue,
+      labels: {
+        mark: $<HTMLInputElement>('label-mark').value.trim() || 'mark',
+        issue: $<HTMLInputElement>('label-issue').value.trim() || 'issue',
+      },
       mode: $<HTMLSelectElement>('hotkey-mode').value as RecorderConfig['hotkeys']['mode'],
     },
     telemetry: {
@@ -82,12 +305,20 @@ function readConfigForm(): RecorderConfig {
       enabled: $<HTMLInputElement>('telemetry-enabled').checked,
       url: $<HTMLInputElement>('telemetry-url').value.trim(),
     },
+    pipeline: {
+      autoRun: $<HTMLInputElement>('pipeline-autorun').checked,
+      command: $<HTMLInputElement>('pipeline-command').value.trim() || 'playtest-pipeline',
+      model: $<HTMLSelectElement>('pipeline-model').value || 'small',
+      preSeconds: numberField('pipeline-pre', config.pipeline.preSeconds),
+      postSeconds: numberField('pipeline-post', config.pipeline.postSeconds),
+      mergeGapSeconds: numberField('pipeline-merge', config.pipeline.mergeGapSeconds),
+    },
     sessionsDir: $<HTMLInputElement>('sessions-dir').value.trim(),
   };
 }
 
-function renderPreflight(checks: PreflightCheck[]): void {
-  preflightEl.replaceChildren();
+function renderChecks(container: HTMLElement, checks: PreflightCheck[]): void {
+  container.replaceChildren();
   const glyph = { pass: '●', warn: '▲', fail: '✕' } as const;
   for (const check of checks) {
     const row = document.createElement('div');
@@ -101,10 +332,323 @@ function renderPreflight(checks: PreflightCheck[]): void {
     detail.className = 'detail';
     detail.textContent = `— ${check.detail}`;
     row.append(dot, label, detail);
-    preflightEl.appendChild(row);
+    container.appendChild(row);
   }
+}
+
+/** Last preflight result — the wizard reads it to decide what to say. */
+let lastPreflight: PreflightCheck[] = [];
+
+function renderPreflight(checks: PreflightCheck[]): void {
+  lastPreflight = checks;
+  renderChecks(preflightEl, checks);
   applyBtn.disabled = !checks.some((c) => c.fixable && c.status !== 'pass');
 }
+
+async function checkRig(): Promise<PreflightCheck[]> {
+  const checks = await api.rigAdvisories();
+  renderChecks(advisoriesEl, checks);
+  if (checks.length === 0) {
+    advisoriesEl.textContent = 'No advisories on this platform.';
+  }
+  return checks;
+}
+
+// ---------------------------------------------------------------------------
+// Session browser: past sessions from sessionsDir, with open / run actions.
+// Pipeline output streams into the log pane; one pipeline runs at a time.
+// ---------------------------------------------------------------------------
+
+let runningPipelineDir: string | null = null;
+let sessionsCache: SessionListEntry[] = [];
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function badge(text: string, kind: string): HTMLSpanElement {
+  const el = document.createElement('span');
+  el.className = `badge ${kind}`;
+  el.textContent = text;
+  return el;
+}
+
+function renderSessions(entries: SessionListEntry[]): void {
+  sessionsCache = entries;
+  sessionsEl.replaceChildren();
+  $<HTMLSpanElement>('sessions-summary').textContent = entries.length
+    ? `${entries.length} session${entries.length === 1 ? '' : 's'} in ${config.sessionsDir}`
+    : '';
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = `No sessions yet in ${config.sessionsDir}.`;
+    sessionsEl.appendChild(empty);
+    return;
+  }
+  for (const entry of entries) {
+    const running = runningPipelineDir === entry.sessionDir;
+    const row = document.createElement('div');
+    row.className = `session-row${running ? ' running' : ''}`;
+
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = entry.title;
+    title.title = entry.sessionDir;
+    if (running) title.appendChild(badge('pipeline running', 'running'));
+    else if (entry.hasReport) title.appendChild(badge('report', 'report'));
+    if (entry.unfinished) title.appendChild(badge('unfinished', 'unfinished'));
+    if (entry.recordingFile && !entry.recordingExists) title.appendChild(badge('recording missing', 'missing'));
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent =
+      `${shortDate(entry.startedAtWall)} · ` +
+      `${entry.durationMs !== null ? formatTimecode(entry.durationMs) : '—'} · ` +
+      `${entry.markCount} mark${entry.markCount === 1 ? '' : 's'}`;
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const openReport = document.createElement('button');
+    openReport.type = 'button';
+    openReport.textContent = 'Open report';
+    openReport.disabled = !entry.hasReport || running;
+    openReport.addEventListener('click', () => void openSessionReport(entry));
+    const openFolder = document.createElement('button');
+    openFolder.type = 'button';
+    openFolder.textContent = 'Folder';
+    openFolder.addEventListener('click', () => void api.openSessionFolder(entry.sessionDir).then(reportIpcError));
+    const run = document.createElement('button');
+    run.type = 'button';
+    if (running) {
+      run.textContent = 'Cancel';
+      run.addEventListener('click', () => void api.cancelPipeline());
+    } else {
+      run.textContent = entry.hasReport ? 'Re-run pipeline' : 'Run pipeline';
+      run.disabled = runningPipelineDir !== null || !entry.recordingExists;
+      run.title = entry.recordingExists ? '' : 'The OBS recording named in the sidecar is missing.';
+      run.addEventListener('click', () => void runPipeline(entry));
+    }
+    actions.append(openReport, openFolder, run);
+    row.append(title, meta, actions);
+    sessionsEl.appendChild(row);
+  }
+}
+
+function reportIpcError(result: { ok: boolean; error?: string }): void {
+  if (!result.ok) log('error', result.error ?? 'unknown error');
+}
+
+async function openSessionReport(entry: SessionListEntry): Promise<void> {
+  reportIpcError(await api.openSessionReport(entry.sessionDir));
+}
+
+async function runPipeline(entry: SessionListEntry): Promise<void> {
+  config = await api.setConfig(readConfigForm()); // the run uses the settings as shown
+  const result = await api.runPipeline(entry.sessionDir);
+  if (!result.ok) log('error', `Pipeline: ${result.error ?? 'unknown error'}`);
+}
+
+async function loadSessions(): Promise<void> {
+  try {
+    renderSessions(await api.listSessions());
+  } catch (err) {
+    log('error', `Could not list sessions: ${String(err)}`);
+  }
+}
+
+function logPipeline(line: string): void {
+  const span = document.createElement('span');
+  span.className = 'pipeline';
+  span.textContent = `  ${line}\n`;
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// First-run wizard (tech-stack risk 8): sequencing + copy over the checks the
+// rest of this window already performs. Nothing here touches OBS beyond what
+// the OBS-connection card can do; several steps are deliberately copy-only.
+// ---------------------------------------------------------------------------
+
+interface WizardStep {
+  short: string;
+  title: string;
+  /** HTML body (static copy authored here, never user data). */
+  body: string;
+  action?: { label: string; run: () => Promise<string> };
+}
+
+const WIZARD_STEPS: WizardStep[] = [
+  {
+    short: 'OBS',
+    title: 'OBS Studio installed?',
+    body:
+      '<p>The recorder drives a <strong>separately installed OBS Studio 30.2 or newer</strong> over its WebSocket API — it never bundles or links OBS.</p>' +
+      '<p>If it is missing, install it from <strong>obsproject.com</strong>, run it once, then come back and press <em>Detect</em>.</p>',
+    action: {
+      label: 'Detect OBS',
+      run: async () => {
+        const info = await api.obsDetectInstall();
+        if (!info.installed) return 'OBS not found. Install OBS Studio 30.2+, run it once, then press Detect again.';
+        return `OBS found${info.path ? ` at ${info.path}` : ''}${info.running ? ' (running)' : ' (not running — start it before the next step)'}.`;
+      },
+    },
+  },
+  {
+    short: 'WebSocket',
+    title: 'Enable the WebSocket server and connect',
+    body:
+      '<p><em>Auto-detect</em> reads the port and password from OBS\'s own plugin config. If the server is off and OBS is closed it is switched on for you; if OBS is running, flip it in <strong>OBS → Tools → WebSocket Server Settings → Enable</strong> and press the button again.</p>' +
+      '<p>Then start OBS (if it is not running) — the step connects automatically once the server is reachable.</p>',
+    action: {
+      label: 'Auto-detect & connect',
+      run: async () => {
+        await autoDetectObs();
+        const status = await api.getStatus();
+        return status.obsConnected
+          ? 'Connected to OBS.'
+          : 'Not connected yet — see the log at the bottom for what to do, then retry.';
+      },
+    },
+  },
+  {
+    short: 'Profile',
+    title: 'Recording profile: Hybrid MP4 + mic on track 2',
+    body:
+      '<p>Preflight checks the OBS profile; <em>Apply</em> sets Advanced output, <strong>Hybrid MP4</strong> (chapters + crash recovery) and enables audio track 2.</p>' +
+      '<ul>' +
+      '<li>Route your <strong>mic to track 2 only</strong> (game/desktop audio on track 1): OBS → Audio Mixer ⚙ → Advanced Audio Properties.</li>' +
+      '<li>Pick a <strong>dedicated recording encoder</strong> (NVENC/AMF/QSV) under Settings → Output → Recording — with "(use stream encoder)" OBS cannot pause the recording.</li>' +
+      '<li><strong>Restart OBS</strong> after applying; profile changes made over WebSocket take effect on restart.</li>' +
+      '</ul>',
+    action: {
+      label: 'Run preflight & apply',
+      run: async () => {
+        const status = await api.getStatus();
+        if (!status.obsConnected) return 'Connect to OBS first (previous step).';
+        renderPreflight(await api.obsApplyRecommended());
+        const bad = lastPreflight.filter((c) => c.status !== 'pass');
+        return bad.length === 0
+          ? 'Profile looks good.'
+          : `Applied what WebSocket can set. Still needs you: ${bad.map((c) => c.label).join('; ')}.`;
+      },
+    },
+  },
+  {
+    short: 'Face cam',
+    title: 'Want a face cam? (optional)',
+    body:
+      '<p>The app records whatever OBS records and never touches the webcam. For a picture-in-picture face cam, add a <strong>Video Capture Device</strong> source to your OBS scene and position it — OBS composites it into the single recording, and the condensed cut and Notion upload include it automatically.</p>',
+  },
+  {
+    short: 'Rig',
+    title: 'Playtest rig checklist',
+    body:
+      '<p>Read-only advisories from the performance research: Game DVR off, HAGS off, High Performance power plan. Also: record to an internal SSD that is not the game drive, cap the game\'s FPS at the monitor refresh, OBS process priority Above Normal.</p>',
+    action: {
+      label: 'Check rig',
+      run: async () => {
+        const checks = await checkRig();
+        const warn = checks.filter((c) => c.status !== 'pass');
+        return warn.length === 0 ? 'Rig looks good.' : `${warn.length} advisory item(s) — see the rig panel below.`;
+      },
+    },
+  },
+  {
+    short: 'Go',
+    title: 'You are set',
+    body:
+      '<ul>' +
+      '<li>Pick a session title and press <strong>Start recording</strong>; the window closes and the recorder lives in the tray.</li>' +
+      '<li>Press the mark key (default F8; F9 = issue) when something happens and say your note out loud — that speech becomes the note text.</li>' +
+      '<li>Stop (or pause) from the tray icon. The pipeline command appears here afterwards; turn on <em>Run pipeline automatically</em> in settings to skip the terminal.</li>' +
+      '<li>If OBS was ever force-killed, its <strong>"OBS Studio Crash Detected"</strong> dialog blocks the WebSocket server until you dismiss it.</li>' +
+      '</ul>',
+  },
+];
+
+let wizardIndex = 0;
+
+function wizardVisible(): boolean {
+  return !$('wizard-section').classList.contains('hidden');
+}
+
+function renderWizard(): void {
+  const step = WIZARD_STEPS[wizardIndex]!;
+  $<HTMLSpanElement>('wizard-step-label').textContent = `step ${wizardIndex + 1} of ${WIZARD_STEPS.length}`;
+  const list = $<HTMLOListElement>('wizard-steps');
+  list.replaceChildren();
+  WIZARD_STEPS.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.textContent = s.short;
+    li.className = i === wizardIndex ? 'current' : i < wizardIndex ? 'done' : '';
+    list.appendChild(li);
+  });
+  $('wizard-title').textContent = step.title;
+  $('wizard-body').innerHTML = step.body;
+  $('wizard-status').textContent = '';
+  const action = $<HTMLButtonElement>('wizard-action');
+  action.style.display = step.action ? '' : 'none';
+  action.textContent = step.action?.label ?? '';
+  action.disabled = false;
+  $<HTMLButtonElement>('wizard-back').disabled = wizardIndex === 0;
+  $<HTMLButtonElement>('wizard-next').textContent = wizardIndex === WIZARD_STEPS.length - 1 ? 'Finish' : 'Next';
+}
+
+function openWizard(index = 0): void {
+  wizardIndex = index;
+  $('wizard-section').classList.remove('hidden');
+  renderWizard();
+  $('wizard-section').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+async function closeWizard(): Promise<void> {
+  $('wizard-section').classList.add('hidden');
+  if (!config.setupDone) {
+    config = await api.setConfig({ ...readConfigForm(), setupDone: true });
+  }
+}
+
+function initWizard(): void {
+  $<HTMLButtonElement>('open-wizard').addEventListener('click', () => openWizard(0));
+  $<HTMLButtonElement>('wizard-skip').addEventListener('click', () => void closeWizard());
+  $<HTMLButtonElement>('wizard-back').addEventListener('click', () => {
+    if (wizardIndex > 0) {
+      wizardIndex -= 1;
+      renderWizard();
+    }
+  });
+  $<HTMLButtonElement>('wizard-next').addEventListener('click', () => {
+    if (wizardIndex < WIZARD_STEPS.length - 1) {
+      wizardIndex += 1;
+      renderWizard();
+    } else {
+      void closeWizard();
+    }
+  });
+  $<HTMLButtonElement>('wizard-action').addEventListener('click', async () => {
+    const step = WIZARD_STEPS[wizardIndex];
+    if (!step?.action) return;
+    const button = $<HTMLButtonElement>('wizard-action');
+    const status = $('wizard-status');
+    button.disabled = true;
+    status.textContent = 'Working…';
+    try {
+      status.textContent = await step.action.run();
+    } catch (err) {
+      status.textContent = `Failed: ${String(err)}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+/** Summary of the session that just finished, shown until a new one starts. */
+let finishedSummary: SessionSummary | null = null;
+/** Live-updates the elapsed time while a session runs with the window open. */
+let statusPollTimer: number | null = null;
 
 function renderStatus(status: StatusSnapshot): void {
   statusPill.className = `pill ${status.state === 'idle' ? (status.obsConnected ? 'connected' : 'idle') : status.state}`;
@@ -116,6 +660,40 @@ function renderStatus(status: StatusSnapshot): void {
       : `${status.state} ${formatTimecode(status.recordingMs ?? 0)} · ${status.markCount ?? 0} marks`;
   startBtn.disabled = !status.obsConnected || status.state !== 'idle';
   preflightBtn.disabled = !status.obsConnected;
+  renderProgress(status);
+  if (status.state !== 'idle' && statusPollTimer === null) {
+    statusPollTimer = window.setInterval(() => void api.getStatus().then(renderStatus), 1000);
+  } else if (status.state === 'idle' && statusPollTimer !== null) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+}
+
+function renderProgress(status: StatusSnapshot): void {
+  const marks = status.markCount ?? 0;
+  const live = `${formatTimecode(status.recordingMs ?? 0)} · ${marks} mark${marks === 1 ? '' : 's'}`;
+  if (status.state === 'recording') {
+    finishedSummary = null; // a new session supersedes the last one's result
+    statusDot.className = 'status-dot recording';
+    statusText.textContent = `Recording — ${live}`;
+    progressFill.className = 'progress-fill indeterminate';
+  } else if (status.state === 'paused') {
+    statusDot.className = 'status-dot paused';
+    statusText.textContent = `Paused — ${live}`;
+    progressFill.className = 'progress-fill indeterminate paused';
+  } else if (finishedSummary) {
+    statusDot.className = 'status-dot done';
+    statusText.textContent =
+      `Session finalized — ${finishedSummary.markCount} marks · ` +
+      `${formatTimecode(finishedSummary.durationMs)}. Recording is closed; run the pipeline command above to process it.`;
+    progressFill.className = 'progress-fill done';
+  } else {
+    statusDot.className = `status-dot ${status.obsConnected ? 'ready' : 'idle'}`;
+    statusText.textContent = status.obsConnected
+      ? 'Ready — OBS connected, no session running'
+      : 'Idle — not connected to OBS';
+    progressFill.className = 'progress-fill';
+  }
 }
 
 function renderSummary(summary: SessionSummary): void {
@@ -151,6 +729,7 @@ function renderSummary(summary: SessionSummary): void {
     tbody.appendChild(tr);
   }
   $<HTMLElement>('pipeline-command').textContent = summary.pipelineCommand;
+  $<HTMLSpanElement>('model-tip').textContent = MODEL_TIP;
 }
 
 async function connectObs(): Promise<void> {
@@ -192,9 +771,16 @@ async function autoDetectObs(): Promise<void> {
 }
 
 async function init(): Promise<void> {
+  initBindingCapture();
+  initWizard();
   config = await api.getConfig();
   fillConfigForm();
   renderStatus(await api.getStatus());
+  await loadSessions();
+  if (!config.setupDone) openWizard(0);
+
+  $<HTMLButtonElement>('refresh-sessions').addEventListener('click', () => void loadSessions());
+  $<HTMLButtonElement>('check-rig').addEventListener('click', () => void checkRig());
 
   $<HTMLButtonElement>('obs-autodetect').addEventListener('click', () => void autoDetectObs());
   $<HTMLButtonElement>('obs-connect').addEventListener('click', () => void connectObs());
@@ -205,9 +791,11 @@ async function init(): Promise<void> {
   });
 
   $<HTMLButtonElement>('save-config').addEventListener('click', async () => {
+    const before = config.sessionsDir;
     config = await api.setConfig(readConfigForm());
     fillConfigForm(); // refresh the password placeholder ("saved" state)
     log('info', 'Settings saved.');
+    if (config.sessionsDir !== before) await loadSessions();
   });
 
   startBtn.addEventListener('click', async () => {
@@ -237,8 +825,27 @@ async function init(): Promise<void> {
         log('info', `Mark #${event.mark.seq} (${event.mark.label}) at ${event.mark.videoMs !== null ? formatTimecode(event.mark.videoMs) : '?'}`);
         break;
       case 'session-stopped':
+        finishedSummary = event.summary;
         renderSummary(event.summary);
         void api.getStatus().then(renderStatus);
+        void loadSessions();
+        break;
+      case 'pipeline-started':
+        runningPipelineDir = event.sessionDir;
+        renderSessions(sessionsCache);
+        break;
+      case 'pipeline-output':
+        logPipeline(event.line);
+        break;
+      case 'pipeline-done':
+        runningPipelineDir = null;
+        log(
+          event.code === 0 ? 'info' : 'error',
+          event.code === 0
+            ? `Pipeline finished${event.reportPath ? `: ${event.reportPath}` : ''}`
+            : `Pipeline exited with code ${event.code ?? 'unknown'}.`,
+        );
+        void loadSessions();
         break;
       case 'obs-connection':
         log(event.connected ? 'info' : 'warn', event.connected ? 'OBS connected.' : 'OBS connection lost.');
@@ -246,6 +853,10 @@ async function init(): Promise<void> {
         break;
       case 'log':
         log(event.level, event.message);
+        break;
+      case 'capture-input':
+        // A controller/HID press identified by the helper while armed.
+        if (capturing) finishCapture(event.binding);
         break;
     }
   });

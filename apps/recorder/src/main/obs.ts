@@ -93,6 +93,21 @@ export class ObsClient extends EventEmitter {
   }
 
   /**
+   * PauseRecord/ResumeRecord. Verified live (M1, OBS 32.2): with the
+   * recording sharing the stream encoder, PauseRecord returns success but
+   * nothing pauses (no PAUSED event, outputPaused stays false) and
+   * ResumeRecord then fails with 503. Callers must not trust the request
+   * result alone — see SessionController.pause().
+   */
+  async pauseRecord(): Promise<void> {
+    await this.obs.call('PauseRecord');
+  }
+
+  async resumeRecord(): Promise<void> {
+    await this.obs.call('ResumeRecord');
+  }
+
+  /**
    * Timestamped GetRecordStatus — the anchor for all mark→videoMs mapping
    * (§3.4). Returns the raw sample plus OBS's active/paused flags.
    */

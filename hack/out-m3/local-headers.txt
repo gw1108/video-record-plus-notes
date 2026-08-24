@@ -1,0 +1,39 @@
+# M3 local-host verification, 2026-08-23 — Caddy 2 (winget), deploy/Caddyfile with ':8080' + root=REPORT_BIG
+
+## GET /report.html
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 21342
+Content-Security-Policy: frame-ancestors 'self' https://*.notion.so https://*.notion.com https://*.notion.site
+Content-Type: text/html; charset=utf-8
+Etag: "dkwjn9tr7128ggu"
+Last-Modified: Sun, 23 Aug 2026 18:44:22 GMT
+Server: Caddy
+Vary: Accept-Encoding
+Date: Mon, 24 Aug 2026 02:14:32 GMT
+
+## GET /condensed.mp4  Range: bytes=0-1023
+HTTP/1.1 206 Partial Content
+Accept-Ranges: bytes
+Content-Length: 1024
+Content-Range: bytes 0-1023/114848064
+Content-Security-Policy: frame-ancestors 'self' https://*.notion.so https://*.notion.com https://*.notion.site
+Content-Type: video/mp4
+Etag: "dkwjn9rw544w1wdlc0"
+Last-Modified: Sun, 23 Aug 2026 18:44:22 GMT
+Server: Caddy
+Vary: Accept-Encoding
+Date: Mon, 24 Aug 2026 02:14:32 GMT
+
+## GET /chapters.vtt
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 1751
+Content-Security-Policy: frame-ancestors 'self' https://*.notion.so https://*.notion.com https://*.notion.site
+Content-Type: text/vtt
+Etag: "dkwjn9tath2c1cn"
+Last-Modified: Sun, 23 Aug 2026 18:44:22 GMT
+Server: Caddy
+Vary: Accept-Encoding
+Date: Mon, 24 Aug 2026 02:14:32 GMT
+

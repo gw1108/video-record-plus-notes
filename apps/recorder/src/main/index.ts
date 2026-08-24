@@ -6,7 +6,8 @@
  * idle. Starting a session CLOSES every BrowserWindow — the live hot path
  * (hotkey → anchor → sidecar) runs renderer-free with just the tray icon.
  */
-import { app, BrowserWindow, ipcMain, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatTimecode } from '@playtest/shared';
@@ -18,15 +19,20 @@ import type {
   SessionSummary,
   StartSessionRequest,
 } from '../common/ipc-contract.js';
-import { loadConfig, saveConfig } from './config.js';
+import { rigAdvisories } from './advisory.js';
+import { loadConfig, normalizePipeline, saveConfig } from './config.js';
+import { findHelperBinary, GamepadCaptureHelper } from './helper.js';
 import { ObsClient } from './obs.js';
 import {
   enableObsWebsocketServer,
+  findObsInstall,
   obsIsRunning,
   readObsWebsocketSettings,
 } from './obs-config.js';
+import { PipelineRunner } from './pipeline.js';
 import { applyRecommended, runPreflight } from './preflight.js';
 import { SessionController } from './recording.js';
+import { entryFor, listSessions, REPORT_RELATIVE_PATH } from './sessions.js';
 import { RecorderTray } from './tray.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,12 +43,19 @@ const SMOKE = process.argv.includes('--smoke');
 let config: RecorderConfig;
 const obs = new ObsClient();
 const controller = new SessionController(obs);
+const pipeline = new PipelineRunner();
 let tray: RecorderTray | null = null;
 let mainWindow: BrowserWindow | null = null;
 let pendingSummary: SessionSummary | null = null;
 let quitting = false;
 let tooltipTimer: NodeJS.Timeout | null = null;
 let smokeFailed = false;
+let gamepadCapture: GamepadCaptureHelper | null = null;
+
+function stopGamepadCapture(): void {
+  gamepadCapture?.stop();
+  gamepadCapture = null;
+}
 
 function broadcast(event: RecorderPushEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -56,6 +69,12 @@ function notify(title: string, body: string): void {
 
 function createMainWindow(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    // The window can already be open when a session ends (reopened from the
+    // tray mid-recording); did-finish-load won't fire again, so flush here.
+    if (pendingSummary) {
+      broadcast({ type: 'session-stopped', summary: pendingSummary });
+      pendingSummary = null;
+    }
     mainWindow.show();
     mainWindow.focus();
     return;
@@ -73,6 +92,7 @@ function createMainWindow(): void {
     },
   });
   mainWindow.on('closed', () => {
+    stopGamepadCapture(); // an armed capture button dies with its window
     mainWindow = null;
   });
   mainWindow.webContents.on('did-finish-load', () => {
@@ -101,6 +121,7 @@ function createMainWindow(): void {
 }
 
 function closeAllWindows(): void {
+  stopGamepadCapture(); // an armed capture button dies with its window
   for (const win of BrowserWindow.getAllWindows()) win.close();
   mainWindow = null;
 }
@@ -130,6 +151,46 @@ async function handleStop(): Promise<{ ok: boolean; summary?: SessionSummary; er
   }
 }
 
+async function handlePause(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await controller.pause();
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    controller.emit('log', 'warn', `Pause: ${message}`);
+    notify('Pause not applied', message);
+    return { ok: false, error: message };
+  }
+}
+
+async function handleResume(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await controller.resume();
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    controller.emit('log', 'warn', `Resume: ${message}`);
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * Spawn the post-session pipeline for one session dir. Refused while a
+ * session is live: STT/VAD/FFmpeg are exactly the load that must never
+ * overlap recording (perf report §1).
+ */
+function startPipeline(sessionDir: string): { ok: boolean; error?: string } {
+  if (controller.recording) return { ok: false, error: 'Cannot run the pipeline while recording.' };
+  if (pipeline.running) return { ok: false, error: `Pipeline already running for ${pipeline.running}.` };
+  if (!entryFor(sessionDir)) return { ok: false, error: `No session sidecar in ${sessionDir}.` };
+  try {
+    pipeline.run(config.pipeline, sessionDir);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /** The OBS password is write-only across IPC: never send it to the renderer. */
 function redactedConfig(): RecorderConfig {
   return {
@@ -144,9 +205,13 @@ function registerIpc(): void {
     // An empty password from the renderer means "keep the stored one" (the
     // form is populated from the redacted config, so blank is the norm).
     const password = next.obs.password || config.obs.password;
-    config = { ...next, obs: { host: next.obs.host, port: next.obs.port, password } };
+    config = {
+      ...next,
+      obs: { host: next.obs.host, port: next.obs.port, password },
+      pipeline: normalizePipeline(next.pipeline),
+    };
     saveConfig(config);
-    tray?.setMarkHotkeyLabel(config.hotkeys.mark);
+    tray?.setMarkHotkeyLabel(config.hotkeys.mark.label);
     return redactedConfig();
   });
 
@@ -247,6 +312,8 @@ function registerIpc(): void {
 
   ipcMain.handle('obs:preflight', () => runPreflight(obs));
   ipcMain.handle('obs:apply-recommended', () => applyRecommended(obs));
+  ipcMain.handle('obs:detect-install', () => findObsInstall());
+  ipcMain.handle('rig:advisories', () => rigAdvisories());
 
   ipcMain.handle('session:start', async (_e, req: StartSessionRequest) => {
     try {
@@ -259,7 +326,46 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('session:stop', () => handleStop());
+  ipcMain.handle('session:pause', () => handlePause());
+  ipcMain.handle('session:resume', () => handleResume());
   ipcMain.handle('session:status', () => controller.statusSnapshot());
+
+  // Session browser: read-only listing of sessionsDir + open/run actions.
+  ipcMain.handle('sessions:list', () => listSessions(config.sessionsDir));
+  ipcMain.handle('sessions:open-report', async (_e, sessionDir: string) => {
+    if (!entryFor(sessionDir)) return { ok: false, error: 'Not a session directory.' };
+    const report = join(sessionDir, REPORT_RELATIVE_PATH);
+    if (!existsSync(report)) return { ok: false, error: 'No report yet — run the pipeline first.' };
+    const error = await shell.openPath(report);
+    return error ? { ok: false, error } : { ok: true };
+  });
+  ipcMain.handle('sessions:open-folder', async (_e, sessionDir: string) => {
+    if (!entryFor(sessionDir)) return { ok: false, error: 'Not a session directory.' };
+    const error = await shell.openPath(sessionDir);
+    return error ? { ok: false, error } : { ok: true };
+  });
+  ipcMain.handle('pipeline:run', (_e, sessionDir: string) => startPipeline(sessionDir));
+  ipcMain.handle('pipeline:cancel', () => pipeline.cancel());
+
+  // Controller/HID capture for the binding buttons: run the helper's capture
+  // mode and forward each identified press to the renderer. Keyboard/mouse
+  // capture never comes through here (plain DOM events in the renderer).
+  ipcMain.handle('capture:gamepad-start', () => {
+    if (controller.recording) return { ok: false, error: 'Cannot rebind while recording.' };
+    const binary = findHelperBinary(config.helperPath);
+    if (!binary) {
+      return {
+        ok: false,
+        error: 'capture-helper.exe not found — controller/pedal capture unavailable (keyboard and mouse still work). Build it with: cargo build --release (in helper/capture-helper).',
+      };
+    }
+    stopGamepadCapture();
+    gamepadCapture = new GamepadCaptureHelper();
+    gamepadCapture.on('input', (binding) => broadcast({ type: 'capture-input', binding }));
+    gamepadCapture.start(binary);
+    return { ok: true };
+  });
+  ipcMain.handle('capture:gamepad-stop', () => stopGamepadCapture());
 }
 
 function wireController(): void {
@@ -280,12 +386,29 @@ function wireController(): void {
   controller.on('stopped', (summary: SessionSummary) => {
     stopTooltipTimer();
     tray?.setRecording(false);
+    const autoRun = config.pipeline.autoRun;
     notify(
       'Recording stopped',
-      `${summary.markCount} marks — ${formatTimecode(summary.durationMs)}. Next: run the post-session pipeline.`,
+      `${summary.markCount} marks — ${formatTimecode(summary.durationMs)}. ` +
+        (autoRun ? 'Running the post-session pipeline…' : 'Next: run the post-session pipeline.'),
     );
     pendingSummary = summary;
     createMainWindow();
+    if (autoRun) {
+      const result = startPipeline(summary.sessionDir);
+      if (!result.ok) controller.emit('log', 'warn', `Auto-run pipeline: ${result.error}`);
+    }
+  });
+
+  pipeline.on('started', (sessionDir: string, command: string) => {
+    broadcast({ type: 'pipeline-started', sessionDir, command });
+    controller.emit('log', 'info', `pipeline: ${command}`);
+  });
+  pipeline.on('line', (sessionDir: string, line: string) => broadcast({ type: 'pipeline-output', sessionDir, line }));
+  pipeline.on('done', (sessionDir: string, code: number | null, reportPath?: string) => {
+    broadcast({ type: 'pipeline-done', sessionDir, code, reportPath });
+    if (code === 0 && reportPath) notify('Report ready', reportPath);
+    else notify('Pipeline failed', `Exit code ${code ?? 'unknown'} — see the log in the recorder window.`);
   });
 
   obs.on('connected', () => broadcast({ type: 'obs-connection', connected: true }));
@@ -309,6 +432,8 @@ if (!gotLock) {
     tray = new RecorderTray({
       onShow: () => createMainWindow(),
       onMark: () => void controller.mark('mark', undefined),
+      onPause: () => void handlePause(),
+      onResume: () => void handleResume(),
       onStop: () => void handleStop(),
       onQuit: () => {
         if (controller.recording) {
@@ -319,11 +444,11 @@ if (!gotLock) {
         app.quit();
       },
     });
-    tray.setMarkHotkeyLabel(config.hotkeys.mark);
+    tray.setMarkHotkeyLabel(config.hotkeys.mark.label);
 
     controller.on('status', (status) => {
       if (status.state !== 'idle') {
-        tray?.setRecording(true);
+        tray?.setRecording(true, status.state === 'paused');
         if (!tooltipTimer) startTooltipTimer();
       }
     });

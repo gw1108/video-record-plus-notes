@@ -3,7 +3,7 @@ name = "capture-helper"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
-description = "Native capture helper for the playtest recorder: Raw Input mark-hotkey fallback (implemented) and separate webcam track capture (Phase 2 stub). See tech-stack report §3.6."
+description = "Native capture helper for the playtest recorder: Raw Input keyboard/mouse mark-hotkey listener, XInput/HID gamepad listener, and a capture mode that reports pad button identities for the settings UI. See tech-stack report §3.6."
 
 [dependencies.windows]
 version = "0.58"
@@ -12,7 +12,9 @@ features = [
     "Win32_Graphics_Gdi",
     "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_XboxController",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Devices_HumanInterfaceDevice",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
 ]

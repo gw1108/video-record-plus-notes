@@ -1,0 +1,106 @@
+{
+  "sessionDir": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live",
+  "recordingFile": "C:/Users/George/Videos/2026-08-23 17-28-59.mp4",
+  "pipelineCommand": "playtest-pipeline process C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_172859_m5-live --pre 5 --post 3",
+  "pauseError": null,
+  "resumeError": null,
+  "afterPause": {
+    "state": "paused",
+    "obsConnected": true,
+    "sessionId": "2026-08-23_172859_m5-live",
+    "sessionTitle": "m5-live",
+    "recordingMs": 1501,
+    "markCount": 1,
+    "telemetryConnected": false
+  },
+  "afterResume": {
+    "state": "recording",
+    "obsConnected": true,
+    "sessionId": "2026-08-23_172859_m5-live",
+    "sessionTitle": "m5-live",
+    "recordingMs": 1960,
+    "markCount": 2,
+    "telemetryConnected": false
+  },
+  "marks": [
+    {
+      "id": "m1",
+      "seq": 1,
+      "kind": "manual",
+      "label": "bug",
+      "hotkey": "F9",
+      "monoMs": 34114529.9331,
+      "videoMs": 1501,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 1501,
+        "rttMs": 0.6671999990940094
+      }
+    },
+    {
+      "id": "m2",
+      "seq": 2,
+      "kind": "manual",
+      "label": "fun",
+      "hotkey": "F8",
+      "monoMs": 34116546.9585,
+      "videoMs": 1960,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 1960,
+        "rttMs": 0.6716000065207481
+      }
+    },
+    {
+      "id": "m3",
+      "seq": 3,
+      "kind": "manual",
+      "label": "fun",
+      "hotkey": "F8",
+      "monoMs": 34118558.0222,
+      "videoMs": 3086,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 3086,
+        "rttMs": 0.4166000038385391
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "record-started",
+      "monoMs": 34112014.305
+    },
+    {
+      "type": "record-paused",
+      "monoMs": 34114540.6956
+    },
+    {
+      "type": "chapter-create-failed",
+      "monoMs": 34116549.4159,
+      "detail": "Error: Verify that the output being used supports chapter markers."
+    },
+    {
+      "type": "record-resumed",
+      "monoMs": 34116553.9915
+    },
+    {
+      "type": "record-stopped",
+      "monoMs": 34121511.8165
+    }
+  ],
+  "log": [],
+  "checks": {
+    "labelsFromConfig": true,
+    "pauseEventOrIgnored": true,
+    "pausedStateReported": true,
+    "resumedState": true,
+    "commandHasPolicy": true,
+    "commandMatchesBuilder": true,
+    "recordingExists": true,
+    "markDuringPauseAnchored": true
+  }
+}

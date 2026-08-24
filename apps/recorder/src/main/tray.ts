@@ -8,6 +8,8 @@ import { Menu, nativeImage, Tray } from 'electron';
 export interface TrayHandlers {
   onShow: () => void;
   onMark: () => void;
+  onPause: () => void;
+  onResume: () => void;
   onStop: () => void;
   onQuit: () => void;
 }
@@ -38,7 +40,9 @@ export class RecorderTray {
   private tray: Tray;
   private idleIcon = circleIcon(160, 160, 160);
   private recordingIcon = circleIcon(48, 48, 230);
+  private pausedIcon = circleIcon(41, 180, 240);
   private recording = false;
+  private paused = false;
   private markHotkeyLabel = 'F8';
 
   constructor(private readonly handlers: TrayHandlers) {
@@ -53,9 +57,10 @@ export class RecorderTray {
     this.rebuildMenu();
   }
 
-  setRecording(recording: boolean): void {
+  setRecording(recording: boolean, paused = false): void {
     this.recording = recording;
-    this.tray.setImage(recording ? this.recordingIcon : this.idleIcon);
+    this.paused = recording && paused;
+    this.tray.setImage(!recording ? this.idleIcon : this.paused ? this.pausedIcon : this.recordingIcon);
     if (!recording) this.tray.setToolTip('Playtest Recorder — idle');
     this.rebuildMenu();
   }
@@ -67,7 +72,7 @@ export class RecorderTray {
   private rebuildMenu(): void {
     const menu = Menu.buildFromTemplate([
       {
-        label: this.recording ? 'Recording…' : 'Playtest Recorder',
+        label: !this.recording ? 'Playtest Recorder' : this.paused ? 'Paused' : 'Recording…',
         enabled: false,
       },
       { type: 'separator' },
@@ -76,6 +81,12 @@ export class RecorderTray {
         enabled: this.recording,
         click: () => this.handlers.onMark(),
       },
+      // PauseRecord/ResumeRecord over obs-websocket. Needs a dedicated
+      // recording encoder in OBS (preflight warns; the controller reports the
+      // no-op case instead of pretending the recording paused).
+      this.paused
+        ? { label: 'Resume recording', enabled: this.recording, click: () => this.handlers.onResume() }
+        : { label: 'Pause recording', enabled: this.recording, click: () => this.handlers.onPause() },
       {
         label: 'Stop recording',
         enabled: this.recording,

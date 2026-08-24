@@ -1,0 +1,77 @@
+{
+  "id": "2026-08-23_115112_m1-obs-crash",
+  "title": "m1-obs-crash",
+  "sessionDir": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_115112_m1-obs-crash",
+  "recordingFile": "C:/Users/George/Videos/2026-08-23 11-51-12.mp4",
+  "durationMs": 35650,
+  "markCount": 3,
+  "marks": [
+    {
+      "id": "m1",
+      "seq": 1,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13853942.7093,
+      "videoMs": 9046,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 9050,
+        "rttMs": 8.33500000089407
+      }
+    },
+    {
+      "id": "m2",
+      "seq": 2,
+      "kind": "manual",
+      "label": "issue",
+      "hotkey": "F9",
+      "monoMs": 13858331.7953,
+      "videoMs": 13426,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 13430,
+        "rttMs": 8.224899999797344
+      }
+    },
+    {
+      "id": "m3",
+      "seq": 3,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13868089.135,
+      "videoMs": 23188,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "calibrated"
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "record-started",
+      "monoMs": 13844205.2439
+    },
+    {
+      "type": "obs-disconnected",
+      "monoMs": 13861805.25
+    },
+    {
+      "type": "chapter-create-failed",
+      "monoMs": 13868097.8063,
+      "detail": "Error: Not connected"
+    },
+    {
+      "type": "obs-reconnected",
+      "monoMs": 13879850.6252
+    },
+    {
+      "type": "record-stopped",
+      "monoMs": 13879851.9333
+    }
+  ],
+  "pipelineCommand": "playtest-pipeline process \"C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_115112_m1-obs-crash\""
+}

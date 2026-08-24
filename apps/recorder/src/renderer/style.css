@@ -78,6 +78,30 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 button.primary:hover:not(:disabled) { filter: brightness(1.1); }
 
+.bind-group { display: flex; gap: 4px; align-items: stretch; }
+
+/* Keycap-style binding button: shows the bound input, click to re-capture. */
+button.bind {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  min-width: 110px;
+  background: var(--bg);
+  border-bottom-width: 3px;
+  text-align: center;
+}
+button.bind.listening {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: pulse 1.2s infinite;
+  font-family: inherit;
+}
+button.bind-reset {
+  padding: 8px 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+button.bind-reset:hover:not(:disabled) { color: var(--text); }
+
 .pill {
   padding: 3px 10px;
   border-radius: 999px;
@@ -118,6 +142,31 @@ code {
 
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; line-height: 1.5; }
 
+.status-line { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; line-height: 1.5; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+.status-dot.ready { background: var(--accent); }
+.status-dot.recording { background: var(--rec); animation: pulse 1.6s infinite; }
+.status-dot.paused { background: var(--warn); }
+.status-dot.done { background: var(--pass); }
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.progress-fill { height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width 0.3s ease; }
+/* Recording has no known end, so the bar sweeps instead of filling. */
+.progress-fill.indeterminate { width: 30%; background: var(--rec); animation: sweep 1.8s ease-in-out infinite; }
+.progress-fill.indeterminate.paused { background: var(--warn); animation-play-state: paused; }
+.progress-fill.done { width: 100%; background: var(--pass); }
+
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(433%); }
+}
+
 #log {
   margin: 0;
   max-height: 140px;
@@ -128,3 +177,48 @@ code {
 }
 #log .warn { color: var(--warn); }
 #log .error { color: var(--fail); }
+
+input.narrow { min-width: 70px; width: 110px; }
+button.subtle { background: transparent; color: var(--muted); }
+button.subtle:hover:not(:disabled) { color: var(--text); }
+h2.sub { margin-top: 14px; }
+code.inline { display: inline; padding: 1px 5px; white-space: normal; }
+
+/* Session browser */
+.sessions { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.sessions .empty { color: var(--muted); font-size: 13px; }
+.session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.session-row .title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-row .meta { margin: 0; grid-column: 1; }
+.session-row .actions { grid-row: 1 / span 2; display: flex; gap: 6px; }
+.session-row .actions button { padding: 5px 10px; font-size: 12px; }
+.session-row.running { border-color: var(--accent); }
+.badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; margin-left: 6px; background: #2a2f38; color: var(--muted); }
+.badge.report { background: rgba(62, 207, 142, 0.18); color: var(--pass); }
+.badge.missing { background: rgba(239, 83, 80, 0.18); color: var(--fail); }
+.badge.unfinished { background: rgba(240, 180, 41, 0.18); color: var(--warn); }
+.badge.running { background: rgba(79, 140, 255, 0.2); color: var(--accent); animation: pulse 1.2s infinite; }
+
+#log .pipeline { color: var(--text); opacity: 0.8; }
+
+/* First-run wizard */
+.card.wizard { border-color: var(--accent); }
+.step-label { color: var(--accent); margin-left: 8px; text-transform: none; letter-spacing: 0; }
+.steps { display: flex; gap: 6px; list-style: none; padding: 0; margin: 0 0 12px; flex-wrap: wrap; }
+.steps li { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: #2a2f38; color: var(--muted); }
+.steps li.current { background: var(--accent); color: #fff; }
+.steps li.done { color: var(--pass); }
+.wizard h3 { font-size: 15px; margin: 0 0 6px; }
+.wizard-body { font-size: 13px; line-height: 1.55; color: var(--text); margin-bottom: 10px; }
+.wizard-body p { margin: 0 0 8px; }
+.wizard-body ul { margin: 0 0 8px; padding-left: 18px; }
+.wizard-body li { margin-bottom: 3px; }

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .media import (
+    FfmpegError,
     has_encoder,
     keyframe_at_or_before,
     probe_audio_stream_count,
@@ -101,12 +102,29 @@ def concat_entry(p: Path) -> str:
     return "file '{}'\n".format(p.resolve().as_posix().replace("'", "'\\''"))
 
 
+# `--reencode` encoder preference (§6.2): hardware first, then libopenh264 —
+# the only software H.264 encoder in LGPL FFmpeg builds (BtbN win64-lgpl ships
+# it; `--disable-libx264` there). libx264 is last: GPL builds only, so a
+# shipped product never reaches it. Quality knobs are per-encoder because
+# they share no common option set.
+_VIDEO_ENCODERS: tuple[tuple[str, list[str]], ...] = (
+    ("h264_nvenc", ["-preset", "p5", "-cq", "19"]),
+    ("h264_amf", ["-quality", "quality", "-rc", "cqp", "-qp_i", "19", "-qp_p", "19"]),
+    ("h264_qsv", ["-preset", "medium", "-global_quality", "19"]),
+    ("libopenh264", ["-b:v", "12M", "-maxrate", "16M", "-bufsize", "24M"]),
+    ("libx264", ["-preset", "veryfast", "-crf", "19"]),
+)
+
+
 def _pick_video_encoder() -> list[str]:
-    if has_encoder("h264_nvenc"):
-        return ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "19"]
-    # libx264 exists only in GPL ffmpeg builds; fine for local use, but a
-    # shipped product must bundle an LGPL build + hardware encoders (§6.2).
-    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19"]
+    for name, args in _VIDEO_ENCODERS:
+        if has_encoder(name):
+            return ["-c:v", name, *args]
+    raise FfmpegError(
+        "no H.264 encoder available for --reencode (tried "
+        + ", ".join(n for n, _ in _VIDEO_ENCODERS)
+        + "); use stream copy or install an FFmpeg build with hardware encoders or libopenh264"
+    )
 
 
 def _audio_args(audio_count: int, stream_copy_single: bool) -> list[str]:

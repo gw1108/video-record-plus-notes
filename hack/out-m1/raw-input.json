@@ -1,0 +1,51 @@
+{
+  "id": "2026-08-23_114544_m1-raw-input",
+  "title": "m1-raw-input",
+  "sessionDir": "C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_114544_m1-raw-input",
+  "recordingFile": "C:/Users/George/Videos/2026-08-23 11-45-44.mp4",
+  "durationMs": 14325,
+  "markCount": 2,
+  "marks": [
+    {
+      "id": "m1",
+      "seq": 1,
+      "kind": "manual",
+      "label": "mark",
+      "hotkey": "F8",
+      "monoMs": 13520873.856201172,
+      "videoMs": 3876,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 3878,
+        "rttMs": 1.0903999991714954
+      }
+    },
+    {
+      "id": "m2",
+      "seq": 2,
+      "kind": "manual",
+      "label": "issue",
+      "hotkey": "F9",
+      "monoMs": 13525274.184570312,
+      "videoMs": 8257,
+      "gameTimeMs": null,
+      "anchor": {
+        "method": "direct",
+        "outputDurationMs": 8258,
+        "rttMs": 0.8006999995559454
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "record-started",
+      "monoMs": 13516010.5366
+    },
+    {
+      "type": "record-stopped",
+      "monoMs": 13530331.668
+    }
+  ],
+  "pipelineCommand": "playtest-pipeline process \"C:\\Users\\George\\Videos\\PlaytestSessions\\2026-08-23_114544_m1-raw-input\""
+}

@@ -25,15 +25,32 @@ because `file://` pages cannot fetch sibling JSON.
 - **Interactive transcript** — Hyperaudio-Lite-style click-to-seek with
   word-level highlight when word timestamps exist.
 
+## Deep links
+
+`report.html?t=<seconds>` opens the page seeked to that moment. `t` is
+**original-recording seconds** — the same domain as the displayed note
+timestamps — and is translated through the cut map, so a `t` that falls in a
+cut-out gap snaps to the start of the next kept segment; a `t` past the end
+of the recording does nothing. This is what the Notion publisher's Tier-2
+timestamp links emit (`?t=${floor(note.videoMs / 1000)}`).
+
+- Accepted forms: `?t=95`, `?t=95.5`, `?t=1m35s`, `?t=1h2m3s`; `#t=95` in the
+  hash works as a fallback.
+- The seek waits for `loadedmetadata`; playback is then attempted, and if the
+  browser blocks autoplay the playhead is still positioned and the matching
+  note highlighted/scrolled (note-sync runs on `seeked`).
+
 ## Hosting
 
 - Works opened directly from disk (`file://`) and behind any static server
   honoring HTTP Range requests (nginx is plenty — §5.5).
-- **Notion Tier-3 embedding (§5.0):** when hosting this page for use inside a
-  Notion embed block, the server must NOT send `X-Frame-Options` and its CSP
-  `frame-ancestors` must allow `https://*.notion.so` — API-created embed
-  blocks skip Notion's embeddability validation and silently fail to render
-  otherwise. Verify rendering once manually.
+- Copy-pasteable nginx and Caddy configs, plus the self-host-pure and Notion
+  Tier-3 recipes, live in [`deploy/`](../../deploy/README.md).
+- **Notion Tier-3 embedding (§5.0):** the server must NOT send
+  `X-Frame-Options` and its CSP `frame-ancestors` must allow
+  `https://*.notion.so https://*.notion.com https://*.notion.site` — API-created embed blocks skip Notion's
+  embeddability validation and silently fail to render otherwise. The
+  `deploy/` configs do this; verify rendering inside Notion once manually.
 
 ## Planned upgrades (not blockers)
 
@@ -43,4 +60,3 @@ because `file://` pages cannot fetch sibling JSON.
   strip here already implements.
 - Swap the transcript block for **Hyperaudio Lite** proper (MIT viewer only —
   its *editor* sibling is AGPL/commercial, do not vendor it).
-- `?t=` deep links for Tier-2 timestamp links from Notion note blocks.

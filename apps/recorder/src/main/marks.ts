@@ -5,6 +5,14 @@
  *  2. a GetRecordStatus round-trip anchors it to OBS's outputDuration;
  *  3. if that call fails (e.g. OBS briefly unreachable), fall back to the
  *     rolling median calibration maintained by a background timer.
+ *
+ * Measured accuracy (M1 live test, OBS 32.2, NVENC): outputDuration lags the
+ * media timeline by ~0.4–0.6 s (encode pipeline latency), so direct anchors
+ * land slightly BEFORE the pressed moment — a good failure direction for
+ * seek-to-mark. OBS's own CreateRecordChapter stamps drifted 0.7–1.3 s LATE
+ * across sessions; the sidecar is both the source of truth and the more
+ * accurate of the two. TODO: if tighter anchoring is ever needed, calibrate
+ * the fixed outputDuration lead against audio pts once per session.
  */
 import { anchorFromDirectSample, OffsetCalibration, type MarkAnchorInfo } from '@playtest/shared';
 import type { ObsClient } from './obs.js';

@@ -26,3 +26,11 @@ playtest-pipeline = "playtest_pipeline.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["playtest_pipeline*"]
+
+# Optional bundled FFmpeg (PLAN M6 / §6.2): drop `ffmpeg.exe` + `ffprobe.exe`
+# from an LGPL build (BtbN `…-win64-lgpl`) into `playtest_pipeline/bin/` before
+# `python -m build pipeline` and the wheel carries them; `media.py` prefers
+# them over PATH. The dir is gitignored — never commit binaries. Include the
+# build's LICENSE.txt alongside (LGPL §4/§6: keep the notice with the binary).
+[tool.setuptools.package-data]
+playtest_pipeline = ["bin/*"]
