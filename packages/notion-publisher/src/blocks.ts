@@ -3,7 +3,14 @@
  * [embed widget?] → summary → video → Notes (native, commentable blocks) →
  * Full transcript (collapsed toggle).
  */
-import { formatTimecode, type Note, type ReportData, type TranscriptSegment } from '@playtest/shared';
+import {
+  formatTimecode,
+  originalToCondensedMs,
+  type CutSegment,
+  type Note,
+  type ReportData,
+  type TranscriptSegment,
+} from '@playtest/shared';
 
 // Notion limits: 2000 chars per rich_text item, 100 blocks per children array.
 const RICH_TEXT_MAX = 1900;
@@ -39,6 +46,46 @@ export function embedBlock(url: string): Block {
   return { object: 'block', type: 'embed', embed: { url } };
 }
 
+/**
+ * YouTube video id from `https://youtu.be/<id>`, `https://www.youtube.com/watch?v=<id>`
+ * (any query order, `m.`/`music.` hosts, `/embed/<id>`, `/shorts/<id>`) or a bare
+ * 11-char id. Throws on anything else — a typo here would publish a dead block.
+ */
+export function parseYouTubeId(input: string): string {
+  const trimmed = input.trim();
+  const ID = /^[A-Za-z0-9_-]{11}$/;
+  if (ID.test(trimmed)) return trimmed;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(`not a YouTube URL or video id: ${input}`);
+  }
+  const host = url.hostname.replace(/^www\./, '');
+  let id: string | null = null;
+  if (host === 'youtu.be') id = url.pathname.slice(1).split('/')[0] ?? null;
+  else if (/^(m\.|music\.)?youtube(-nocookie)?\.com$/.test(host)) {
+    id = url.searchParams.get('v') ?? /^\/(?:embed|shorts|live|v)\/([^/?]+)/.exec(url.pathname)?.[1] ?? null;
+  }
+  if (!id || !ID.test(id)) throw new Error(`not a YouTube URL or video id: ${input}`);
+  return id;
+}
+
+/** Canonical watch URL — the form Notion's `video` block documents as supported. */
+export function youtubeWatchUrl(id: string): string {
+  return `https://www.youtube.com/watch?v=${id}`;
+}
+
+/** Deep link into the video at a whole second (`youtu.be/<id>?t=<s>`). */
+export function youtubeLinkAt(id: string, seconds: number): string {
+  return `https://youtu.be/${id}?t=${Math.max(0, Math.floor(seconds))}`;
+}
+
+/** `video` block on an external URL (YouTube `watch?v=` renders the real player). */
+export function videoExternalBlock(url: string): Block {
+  return { object: 'block', type: 'video', video: { type: 'external', external: { url } } };
+}
+
 export function videoUploadBlock(fileUploadId: string): Block {
   return {
     object: 'block',
@@ -47,11 +94,12 @@ export function videoUploadBlock(fileUploadId: string): Block {
   };
 }
 
-export function summaryCallout(data: ReportData): Block {
+export function summaryCallout(data: ReportData, opts: { youtube?: boolean } = {}): Block {
   const condensed =
     data.video.kind === 'condensed'
       ? `condensed to ${formatTimecode(data.video.durationMs)}`
       : 'full recording';
+  const carrier = opts.youtube ? ' · video: YouTube (unlisted)' : '';
   return {
     object: 'block',
     type: 'callout',
@@ -59,25 +107,49 @@ export function summaryCallout(data: ReportData): Block {
       icon: { type: 'emoji', emoji: '🎮' },
       rich_text: [
         rt(
-          `${data.notes.length} notes · original ${formatTimecode(data.session.originalDurationMs)} · ${condensed}`,
+          `${data.notes.length} notes · original ${formatTimecode(data.session.originalDurationMs)} · ${condensed}${carrier}`,
         ),
       ],
     },
   };
 }
 
-/** One note = one paragraph: [video ts] (game ts) LABEL — transcribed text. */
-export function noteBlock(note: Note, embedUrl?: string): Block {
+export interface NoteLinkOptions {
+  /** Hosted report page: `?t=<original seconds>` links (Tier 2 via the widget). */
+  embedUrl?: string;
+  /** YouTube video id: `youtu.be/<id>?t=<condensed seconds>` links. */
+  youtubeId?: string;
+  /** Cut map used to convert the note's original time to condensed time. */
+  cutmap?: CutSegment[];
+}
+
+/**
+ * One note = one paragraph: [video ts] (game ts) LABEL — transcribed text.
+ * The timestamp links to the hosted page when `embedUrl` is set (original
+ * seconds), else to YouTube (condensed seconds via the cut map). With both,
+ * the page link wins and the YouTube link is appended as `▶`. A note with no
+ * condensed position (its window was dropped) gets no YouTube link.
+ */
+export function noteBlock(note: Note, opts: string | NoteLinkOptions = {}): Block {
+  const o: NoteLinkOptions = typeof opts === 'string' ? { embedUrl: opts } : opts;
   const tsText = `[${formatTimecode(note.videoMs)}]`;
   const seconds = Math.floor(note.videoMs / 1000);
+  const embedLink = o.embedUrl ? `${o.embedUrl}${o.embedUrl.includes('?') ? '&' : '?'}t=${seconds}` : undefined;
+  let youtubeLink: string | undefined;
+  if (o.youtubeId) {
+    const condensedMs =
+      o.cutmap && o.cutmap.length > 0 ? originalToCondensedMs(o.cutmap, note.videoMs) : note.videoMs;
+    if (condensedMs !== null) youtubeLink = youtubeLinkAt(o.youtubeId, condensedMs / 1000);
+  }
   const parts: RichText[] = [
     rt(tsText + ' ', {
       bold: true,
       color: 'blue',
-      // Tier-2 timestamp link when the widget is hosted (§5.0): note → video.
-      link: embedUrl ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}t=${seconds}` : undefined,
+      // Tier-2 timestamp link (§5.0): note → video.
+      link: embedLink ?? youtubeLink,
     }),
   ];
+  if (embedLink && youtubeLink) parts.push(rt('▶ ', { color: 'red', link: youtubeLink }));
   if (note.gameTimeMs !== null && note.gameTimeMs !== undefined) {
     parts.push(rt(`(game ${formatTimecode(note.gameTimeMs)}) `, { color: 'gray' }));
   }

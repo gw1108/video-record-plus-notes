@@ -1,0 +1,8 @@
+M2.3 live check — 2026-08-24
+report:            C:\Users\George\Videos\PlaytestSessions\2026-08-23_114134_m1-live\report
+youtube:           https://youtu.be/ycca7RTvkhU (unlisted)
+notion page:       https://app.notion.com/p/m1-live-8-23-2026-3c604dca9a5c81029c82f9fb102b5b1f
+chapter bar (yt):  yes
+unlisted renders:  yes
+&t= honored:       yes
+chapters in embed: yes

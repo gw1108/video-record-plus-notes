@@ -521,6 +521,7 @@ const WIZARD_STEPS: WizardStep[] = [
       '<ul>' +
       '<li>Route your <strong>mic to track 2 only</strong> (game/desktop audio on track 1): OBS → Audio Mixer ⚙ → Advanced Audio Properties.</li>' +
       '<li>Pick a <strong>dedicated recording encoder</strong> (NVENC/AMF/QSV) under Settings → Output → Recording — with "(use stream encoder)" OBS cannot pause the recording.</li>' +
+      '<li>For a YouTube-ready 1080p recording, select <strong>H.264 High Profile</strong> and <strong>VBR</strong>: 8 Mbps at 24/25/30 fps or 12 Mbps at 48/50/60 fps. Use 2 B-frames and NV12 (4:2:0), and keep the recording frame rate equal to the source.</li>' +
       '<li><strong>Restart OBS</strong> after applying; profile changes made over WebSocket take effect on restart.</li>' +
       '</ul>',
     action: {

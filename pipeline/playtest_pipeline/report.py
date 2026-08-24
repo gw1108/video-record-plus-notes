@@ -36,7 +36,8 @@ def _timecode(ms: int) -> str:
 
 def text_in_range(transcript: dict | None, start_ms: int, end_ms: int) -> str:
     """Transcript text within [start_ms, end_ms], word-accurate when word
-    timestamps exist, segment-overlap otherwise."""
+    timestamps exist, segment-overlap otherwise. (Kept for ad-hoc lookups;
+    note text itself is assigned one-segment-one-note by `assign_note_text`.)"""
     if not transcript:
         return ""
     parts: list[str] = []
@@ -50,6 +51,49 @@ def text_in_range(transcript: dict | None, start_ms: int, end_ms: int) -> str:
         elif seg["startMs"] < end_ms and seg["endMs"] > start_ms:
             parts.append(seg.get("text", ""))
     return " ".join(p for p in parts if p).strip()
+
+
+def _distance_ms(point_ms: int, start_ms: int, end_ms: int) -> int:
+    """0 when the point lies inside [start, end], else the gap to the nearest edge."""
+    if point_ms < start_ms:
+        return start_ms - point_ms
+    if point_ms > end_ms:
+        return point_ms - end_ms
+    return 0
+
+
+def assign_note_text(notes: list[dict[str, Any]], transcript: dict | None) -> None:
+    """Credit every transcript segment to exactly ONE note and set `text`.
+
+    The segment windows (`windowStartMs..windowEndMs`, mark - 20 s .. + 10 s
+    by default) are deliberately generous because they drive the video cut;
+    using them for the text too made neighbouring notes repeat each other's
+    sentences and gave a silent mark the previous note's dictation (found on
+    the m1-live report, 2026-08-24). So: among the notes whose window
+    overlaps a segment, the one whose mark instant is nearest to the segment
+    gets it — "speak then press" and "press then speak" both resolve to the
+    right mark, and a mark with no speech of its own stays empty. Ties go to
+    the earlier note. Speech that no window covers is dropped here (it is
+    still in the full transcript).
+    """
+    for n in notes:
+        n["text"] = ""
+    if not transcript or not notes:
+        return
+    parts: dict[str, list[str]] = {n["id"]: [] for n in notes}
+    for seg in transcript.get("segments", []):
+        seg_start, seg_end = seg["startMs"], seg["endMs"]
+        candidates = [
+            n for n in notes if n["windowStartMs"] < seg_end and n["windowEndMs"] > seg_start
+        ]
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda n: (_distance_ms(n["videoMs"], seg_start, seg_end), n["videoMs"]))
+        text = (seg.get("text") or "").strip()
+        if text:
+            parts[best["id"]].append(text)
+    for n in notes:
+        n["text"] = " ".join(parts[n["id"]])
 
 
 def build_notes(
@@ -72,7 +116,7 @@ def build_notes(
                 "label": mark.label,
                 "videoMs": mark.video_ms,
                 "gameTimeMs": mark.game_time_ms,
-                "text": text_in_range(transcript, w.start_ms, w.end_ms),
+                "text": "",
                 "windowStartMs": w.start_ms,
                 "windowEndMs": w.end_ms,
             }
@@ -86,12 +130,13 @@ def build_notes(
                 "label": "speech",
                 "videoMs": w.start_ms,
                 "gameTimeMs": None,
-                "text": text_in_range(transcript, w.start_ms, w.end_ms),
+                "text": "",
                 "windowStartMs": w.start_ms,
                 "windowEndMs": w.end_ms,
             }
         )
     notes.sort(key=lambda n: n["videoMs"])
+    assign_note_text(notes, transcript)
     return notes
 
 

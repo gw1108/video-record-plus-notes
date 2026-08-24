@@ -2,6 +2,7 @@
 
     playtest-pipeline process <session_dir> [options]
     playtest-pipeline inspect <session_dir>
+    playtest-pipeline youtube-kit <session_dir>   # regenerate report/youtube/*.txt only
 
 Every stage caches its output inside <session_dir>/pipeline and is skipped
 when the output already exists (rerun with --force). Heavy optional stages
@@ -16,6 +17,7 @@ import sys
 from pathlib import Path
 
 from . import report as report_mod
+from . import youtube as youtube_mod
 from .condense import CondenseResult, condense
 from .media import probe_chapters, probe_duration_ms, extract_audio_track, tool_origin
 from .plan import (
@@ -189,6 +191,8 @@ def cmd_process(args: argparse.Namespace) -> int:
     )
     report_mod.write_report(report_dir, report_data, chapters, notes)
     print(f"  -> {report_dir / 'report.html'}")
+    kit_dir = youtube_mod.write_kit(report_dir, report_data)
+    print(f"  -> {kit_dir / 'description.txt'} (YouTube title + chapters)")
     report_mod.print_notes_summary(notes)
 
     # Cross-check the sidecar (source of truth) against the redundant MP4
@@ -205,8 +209,9 @@ def cmd_process(args: argparse.Namespace) -> int:
     print(f"  {report_dir / 'report.html'}")
     if stt_ran:
         print(MODEL_TIP)
-    print("Publish to Notion (NOTION_TOKEN + PARENT_ID from .env or the environment):")
-    print(f"  playtest-notion publish \"{report_dir}\"")
+    youtube_mod.print_kit_instructions(kit_dir, report_dir)
+    print("  (NOTION_TOKEN + PARENT_ID from .env or the environment; without --youtube the")
+    print("   publisher falls back to a Notion file upload of condensed.mp4)")
     return 0
 
 
@@ -222,6 +227,22 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         video = f"{m.video_ms / 1000:.1f}s" if m.video_ms is not None else "unanchored"
         game = f"  game={m.game_time_ms / 1000:.1f}s" if m.game_time_ms is not None else ""
         print(f"    #{m.seq} {m.label:<8} {video}{game}")
+    return 0
+
+
+def cmd_youtube_kit(args: argparse.Namespace) -> int:
+    """Rebuild report/youtube/{title,description}.txt from an existing report
+    bundle — no recording or ML stages needed (e.g. after tweaking notes)."""
+    report_dir = Path(args.session_dir).resolve() / "report"
+    data = _load_or_none(report_dir / "report_data.json")
+    if not isinstance(data, dict):
+        raise FileNotFoundError(f"no report bundle at {report_dir} — run `process` first")
+    kit_dir = youtube_mod.write_kit(report_dir, data)
+    print((kit_dir / "title.txt").read_text(encoding="utf-8").rstrip())
+    print()
+    print((kit_dir / "description.txt").read_text(encoding="utf-8").rstrip())
+    print()
+    youtube_mod.print_kit_instructions(kit_dir, report_dir)
     return 0
 
 
@@ -257,6 +278,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("inspect", help="print session sidecar summary")
     p.add_argument("session_dir")
     p.set_defaults(func=cmd_inspect)
+
+    p = sub.add_parser("youtube-kit", help="regenerate report/youtube/*.txt from the report bundle")
+    p.add_argument("session_dir")
+    p.set_defaults(func=cmd_youtube_kit)
 
     args = parser.parse_args(argv)
     try:

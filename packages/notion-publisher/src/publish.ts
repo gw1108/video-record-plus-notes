@@ -16,10 +16,13 @@ import {
   heading2,
   noteBlock,
   paragraph,
+  parseYouTubeId,
   rt,
   summaryCallout,
   transcriptToggle,
+  videoExternalBlock,
   videoUploadBlock,
+  youtubeWatchUrl,
 } from './blocks.js';
 import { uploadFile } from './upload.js';
 
@@ -33,6 +36,12 @@ export interface PublishOptions {
   embedUrl?: string;
   /** Skip uploading condensed.mp4 (e.g. free workspace, or embed-only page). */
   uploadVideo: boolean;
+  /**
+   * Unlisted YouTube upload of condensed.mp4 (URL or id, §5.0 decision):
+   * the page gets a `video` block on it and note timestamps deep-link into it
+   * in condensed seconds. Implies no Notion file upload.
+   */
+  youtube?: string;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -44,9 +53,11 @@ export async function publish(opts: PublishOptions): Promise<string> {
 
   // Header blocks go in with page creation; the video block is appended after
   // its upload finishes; notes/transcript batches follow, keeping §5.3 order.
+  const youtubeId = opts.youtube ? parseYouTubeId(opts.youtube) : undefined;
   const header: Block[] = [];
   if (opts.embedUrl) header.push(embedBlock(opts.embedUrl));
-  header.push(summaryCallout(data));
+  header.push(summaryCallout(data, { youtube: Boolean(youtubeId) }));
+  if (youtubeId) header.push(videoExternalBlock(youtubeWatchUrl(youtubeId)));
 
   const date = data.session.date ? new Date(data.session.date).toLocaleDateString() : '';
   console.log(`Creating page "${data.session.title}"…`);
@@ -61,7 +72,7 @@ export async function publish(opts: PublishOptions): Promise<string> {
   await sleep(RATE_DELAY_MS);
 
   const videoFile = join(opts.reportDir, data.video.file);
-  if (opts.uploadVideo && data.video.kind === 'condensed' && existsSync(videoFile)) {
+  if (!youtubeId && opts.uploadVideo && data.video.kind === 'condensed' && existsSync(videoFile)) {
     console.log('Uploading condensed video…');
     try {
       const fileUploadId = await uploadFile(opts.token, videoFile);
@@ -84,7 +95,8 @@ export async function publish(opts: PublishOptions): Promise<string> {
   }
 
   const body: Block[] = [heading2('Notes')];
-  for (const note of data.notes) body.push(noteBlock(note, opts.embedUrl));
+  const linkOpts = { embedUrl: opts.embedUrl, youtubeId, cutmap: data.cutmap };
+  for (const note of data.notes) body.push(noteBlock(note, linkOpts));
   const toggle = transcriptToggle(data.transcript);
   if (toggle) body.push(toggle);
 
@@ -97,6 +109,12 @@ export async function publish(opts: PublishOptions): Promise<string> {
 
   const url = (page as { url?: string }).url ?? `https://notion.so/${pageId.replace(/-/g, '')}`;
   console.log(`\nPublished: ${url}`);
+  if (youtubeId) {
+    console.log(
+      `Video block: ${youtubeWatchUrl(youtubeId)} — open the page once and check the player renders ` +
+        '(the video must be Unlisted or Public; Private shows "Video unavailable").',
+    );
+  }
   if (opts.embedUrl) {
     console.log(
       'Reminder: the embed URL must be reachable by page viewers and must allow framing by Notion ' +

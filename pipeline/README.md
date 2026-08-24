@@ -22,6 +22,9 @@ recording, and produces the report bundle:
     chapters.vtt              # WebVTT chapters (timeline markers + skip ranges)
     report_data.json          # everything the player page needs
     report.html               # self-contained player page (first-class output)
+    youtube/title.txt         # ready-to-paste YouTube title …
+    youtube/description.txt   # … and description with note-derived chapters
+                              #   (condensed time; 0:00 first, ≥ 10 s each, ≤ 4 800 B)
 ```
 
 ## Usage
@@ -30,6 +33,7 @@ recording, and produces the report bundle:
 playtest-pipeline process <session_dir> [--recording PATH] [--skip-stt] [--skip-vad]
                           [--reencode] [--pre 20 --post 10] [--model small]
 playtest-pipeline inspect <session_dir>
+playtest-pipeline youtube-kit <session_dir>     # rebuild report/youtube/*.txt only
 ```
 
 - `--recording` overrides the recording path when the sidecar's

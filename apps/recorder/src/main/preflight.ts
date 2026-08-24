@@ -1,10 +1,9 @@
 /**
  * OBS first-run preflight (tech-stack report risk 8): validate the separately
  * installed OBS is new enough and configured for Hybrid MP4 + mic on audio
- * track 2, and offer to apply what obs-websocket can set. Encoder tuning
- * (NVENC single-pass CQP, psycho-visual tuning off, lookahead off — perf
- * report §2.3) is not reachable over obs-websocket, so those surface as
- * warnings with instructions instead of silent writes.
+ * track 2, and offer to apply what obs-websocket can set. Encoder tuning is
+ * not reachable over obs-websocket, so YouTube-ready H.264/VBR settings
+ * surface as instructions instead of silent writes.
  */
 import type { PreflightCheck } from '../common/ipc-contract.js';
 import type { ObsClient } from './obs.js';
@@ -118,7 +117,7 @@ export async function runPreflight(obs: ObsClient): Promise<PreflightCheck[]> {
       ? 'Software x264 while a game runs risks frame skipping (perf report §2.1). Select NVENC/AMF/QSV in Settings → Output → Recording.'
       : sharedWithStream
         ? 'Hardware encoder, but shared with streaming: OBS cannot pause the recording in this mode. Set a dedicated encoder under Settings → Output → Recording and restart OBS.'
-        : 'Hardware encoder detected. Also verify in OBS: single-pass, CQP 18–20, psycho-visual tuning OFF, lookahead OFF, NV12, canvas = output resolution, preview disabled (perf report §2.3).',
+        : 'Hardware encoder detected. For a YouTube-ready 1080p recording, use H.264 High Profile, VBR 8 Mbps at 24/25/30 fps or 12 Mbps at 48/50/60 fps, 2 B-frames, NV12 (4:2:0), and the same frame rate as the source. Keep single-pass, psycho-visual tuning OFF, lookahead OFF, canvas = output resolution, and preview disabled.',
     fixable: false,
   });
 

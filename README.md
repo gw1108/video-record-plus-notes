@@ -26,7 +26,7 @@ reports this repo was built from:
 │   └─ session.json + journal sidecar (source of truth)    │
 │                                                          │
 │  OBS Studio (separate install, Hybrid MP4, mic on        │
-│   audio track 2, NVENC single-pass CQP)                  │
+│   audio track 2, hardware H.264 VBR)                     │
 │                                                          │
 │  capture-helper (helper/, Rust): Raw Input kbd/mouse +   │
 │   XInput/HID pad listener                                │
@@ -58,13 +58,13 @@ reports this repo was built from:
 | `pipeline/` | Python post-session pipeline (VAD/STT/condense/report) | ✅ working + tests |
 | `packages/player-embed` | Self-contained report page template (segment-skip + note-sync + `?t=` deep links) | ✅ working |
 | `deploy/` | nginx / Caddy recipe for hosting a report dir (self-host, or framed inside Notion) | ✅ written, not run on a live host |
-| `packages/notion-publisher` | Notion page publisher CLI (video block, note blocks, transcript toggle) | ✅ live-verified 2026-08-23 (`hack/out-m2/`): page + notes + batching + Notion file upload (fallback path). **Video carrier is moving to an unlisted YouTube upload with note-derived chapters** — `--youtube <url>` and the pipeline's `youtube/description.txt` kit are PLAN M2 |
+| `packages/notion-publisher` | Notion page publisher CLI (YouTube `video` block + `youtu.be?t=` note links, note blocks, transcript toggle; Notion file upload as fallback) | ✅ page + notes + batching + file-upload fallback live-verified 2026-08-23 (`hack/out-m2/`); `--youtube <url>` and the pipeline's `youtube/{title,description}.txt` chapter kit are written + unit-tested (2026-08-24), **live render of an unlisted video in an API-created block still to verify** (PLAN M2.3) |
 | `helper/capture-helper` | Rust native helper: Raw Input hotkey fallback + pad listener | ✅ built, bundled into the installer |
 | `sdk/unity` + `docs/telemetry-protocol.md` | Optional in-game-time telemetry (own games) | ✅ reference impl |
 | `hack/` | Live-test harnesses (`live-m1.mjs`, `live-m5.mjs`, evidence in `out-m*/`) + unrelated Claude agent pipeline tooling | — |
 
 Build order follows tech-stack report §7: (1) recorder ✅ → (2) Raw Input
-helper ✅ (webcam track dropped 2026-08-23) → (3) STT/VAD ✅ → (4) condensed export + report page ✅ + Notion publisher ✅ (live) + YouTube kit/`--youtube` ⚠️ (PLAN M2)
+helper ✅ (webcam track dropped 2026-08-23) → (3) STT/VAD ✅ → (4) condensed export + report page ✅ + Notion publisher ✅ (live) + YouTube kit/`--youtube` ✅ (code; live check PLAN M2.3)
 → (5) optional: API uploader after YouTube's audit, Tier-3 embedded widget (`?t=` deep links + hosting recipe ✅, embed-in-Notion check deferred) → (6) telemetry SDK ✅ → (7) hosted shell.
 
 ## Prerequisites
@@ -120,20 +120,38 @@ playtest-pipeline process "<sessions folder>\<session id>"
 # → <session>\report\report.html   (open it — done)
 # to share it: serve <session>/report with deploy/nginx.conf or deploy/Caddyfile (see deploy/README.md)
 
-# optional Notion page: copy .env.example to .env and fill in NOTION_TOKEN (integration
-# secret) + PARENT_ID (the page the integration is connected to) — or set them as env vars
-playtest-notion publish "<session>\report"            # --parent-page <id> / --token override
-#   add --embed-url https://<host>/.../report.html for the synced widget + ?t= timestamp links
-#   Free-plan workspaces cap uploads at 5 MiB: the page then carries a "video upload failed"
-#   line instead of the player — host the bundle (deploy/) and pass --embed-url
+# optional Notion page — the video carrier is an UNLISTED YOUTUBE UPLOAD of the condensed cut
+# (Notion-hosted video is capped at 5 MiB on free plans and has no deep links):
+#   1. YouTube Studio → Create → Upload videos → drop <session>\report\condensed.mp4
+#   2. title from <session>\report\youtube\title.txt; paste youtube\description.txt as the
+#      description (it carries the note-derived chapters); Audience: not made for kids;
+#      Visibility: Unlisted. Copy the https://youtu.be/<id> link.
+#   3. copy .env.example to .env and fill in NOTION_TOKEN (integration secret) + PARENT_ID
+#      (the page the integration is connected to) — or set them as env vars — then:
+playtest-notion publish "<session>\report" --youtube https://youtu.be/<id>
+#   → page = summary · YouTube player · notes (each [m:ss] links to youtu.be/<id>?t=<condensed s>)
+#     · transcript toggle. `playtest-pipeline youtube-kit <session>` rebuilds the kit alone.
+#   Fallbacks: without --youtube the publisher uploads condensed.mp4 into Notion (paid plans;
+#   free plans get a "video upload failed" line); --embed-url https://<host>/.../report.html
+#   embeds the self-hosted synced widget instead (deploy/README.md), --no-upload = no video.
 ```
 
 ## OBS settings the preflight can't set for you
 
-From perf report §2.3 — in OBS Settings → Output → Recording:
-NVENC (or AMF/QSV), **single pass**, CQP 18–20, **psycho-visual tuning OFF**,
-**lookahead OFF**, NV12, canvas = output resolution, preview disabled while
-recording, process priority Above Normal.
+In OBS Settings → Output → Recording, select a dedicated NVENC, AMF, or
+QSV H.264 encoder. Use **High Profile**, **VBR**, 2 B-frames, and these
+[SDR upload targets from YouTube](https://support.google.com/youtube/answer/1722171):
+
+| Output | Video bitrate |
+|---|---:|
+| 1080p at 24, 25, or 30 fps | 8 Mbps |
+| 1080p at 48, 50, or 60 fps | 12 Mbps |
+
+Keep the recording frame rate equal to the source. Use single pass, NV12
+(4:2:0), psycho-visual tuning off, lookahead off, canvas equal to output
+resolution, preview disabled while recording, and process priority Above
+Normal. The app can apply the container and audio-track settings over
+obs-websocket, but OBS does not expose these encoder controls there.
 
 **Webcam (optional, yours to set up):** the app records whatever OBS records.
 Want a face cam in the recording? Add a **Video Capture Device** source to

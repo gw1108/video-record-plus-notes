@@ -76,7 +76,7 @@ open_url() {
 
 # pause "msg" waits for the human to confirm they've done the manual part.
 pause() {
-  printf '  %s%s%s ' "$DIM" "${1:-Press Enter to continue}" "$RESET"
+  printf '\n  %s%s⏎ %s%s ' "$BOLD" "$GREEN" "${1:-Nothing else to do here — press Enter to continue}" "$RESET"
   read -r _ || true
 }
 
@@ -164,6 +164,78 @@ set_var() {
   fi
   SKIPPED+=("GitHub variable $name")
   warn "skipped GitHub variable $name, gh not ready; set it later"
+}
+
+# ── Windows: hand over from WSL to Git Bash ───────────────────────────────
+# In PowerShell, `bash` is WSL's bash.exe: it cannot run Windows node/python
+# and has no cygpath. When the script lives on a Windows drive and Git Bash
+# exists, re-launch there so the wizard sees the same toolchain the user does.
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+if grep -qi microsoft /proc/version 2>/dev/null && [[ "$_SELF" == /mnt/[a-z]/* ]]; then
+  for _gb in "/mnt/c/Program Files/Git/bin/bash.exe" "/mnt/c/Program Files (x86)/Git/bin/bash.exe"; do
+    if [[ -x "$_gb" ]]; then
+      _win_self=$(wslpath -w "$_SELF")
+      printf '  (WSL bash detected — re-launching under Git Bash)\n'
+      exec "$_gb" "$_win_self" "$@"
+    fi
+  done
+  printf '  WSL bash cannot see the Windows toolchain and Git Bash was not found.\n'
+  printf '  Run this from Git Bash instead:  "C:\\Program Files\\Git\\bin\\bash.exe" %s\n' "$(wslpath -w "$_SELF")"
+  exit 1
+fi
+
+# to_unix PATH / to_win PATH convert between Windows and POSIX forms on
+# Git Bash / WSL; pass-through elsewhere. Test files with to_unix, show
+# paths to the human with to_win.
+to_unix() {
+  if   command -v cygpath >/dev/null 2>&1; then cygpath -u "$1"
+  elif command -v wslpath >/dev/null 2>&1 && [[ "$1" == ?:* ]]; then wslpath -u "$1"
+  else printf '%s' "$1"; fi
+}
+to_win() {
+  if   command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"
+  elif command -v wslpath >/dev/null 2>&1; then wslpath -w "$1" 2>/dev/null || printf '%s' "$1"
+  else printf '%s' "$1"; fi
+}
+
+# run_step "what" cmd args… runs a command with its output visible. On failure
+# offers retry / skip / abort instead of exiting. Returns 0 on success or
+# skip (SKIPPED records the skip), and exits only when the human says abort.
+run_step() {
+  local what="$1"; shift
+  while :; do
+    printf '  %s▶ %s%s\n' "$BLUE" "$what" "$RESET"
+    if "$@"; then return 0; fi
+    warn "'$what' failed."
+    local reply=""
+    printf '  %s? [r]etry / [s]kip / [a]bort%s ' "$YELLOW" "$RESET"
+    read -r reply || true
+    case "$reply" in
+      s|S) SKIPPED+=("$what"); return 0 ;;
+      a|A) printf '  aborted — re-run the wizard to resume.\n'; exit 1 ;;
+    esac
+  done
+}
+
+# require_file PATH "how to make it" loops until PATH exists: runs the maker
+# command when given (make_cmd…), otherwise asks the human to create it.
+#   require_file "$KIT/description.txt" "generate the kit" python -m … youtube-kit "$S"
+require_file() {
+  local path="$1" how="$2"; shift 2
+  until [[ -e "$path" ]]; do
+    warn "missing: $(to_win "$path")"
+    if (( $# )); then run_step "$how" "$@"; [[ -e "$path" ]] && break; fi
+    say "$how, then press Enter to check again."
+    pause
+  done
+}
+
+# require_cmd NAME "how to install" loops until NAME is on PATH.
+require_cmd() {
+  until command -v "$1" >/dev/null 2>&1; do
+    warn "'$1' is not on PATH. $2"
+    pause "Installed? Press Enter to check again."
+  done
 }
 
 # finish clears, then shows a closing summary of everything configured.

@@ -75,3 +75,84 @@ test('summary callout describes condensed vs original video', () => {
   assert.equal(text(summaryCallout(base)), '1 notes · original 1:30 · condensed to 0:30');
   assert.match(text(summaryCallout({ ...base, video: { ...base.video, kind: 'original' } })), /full recording$/);
 });
+
+// ---- YouTube carrier (PLAN M2.2)
+import { parseYouTubeId, videoExternalBlock, youtubeLinkAt, youtubeWatchUrl } from './blocks.js';
+import type { CutSegment } from '@playtest/shared';
+
+type Para = { paragraph: { rich_text: Array<{ text: { content: string; link?: { url: string } } }> } };
+
+test('parseYouTubeId accepts youtu.be, watch?v=, embed, shorts and a bare id', () => {
+  for (const input of [
+    'dQw4w9WgXcQ',
+    'https://youtu.be/dQw4w9WgXcQ',
+    'https://youtu.be/dQw4w9WgXcQ?t=19',
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'https://youtube.com/watch?feature=share&v=dQw4w9WgXcQ',
+    'https://m.youtube.com/watch?v=dQw4w9WgXcQ',
+    'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    'https://www.youtube.com/shorts/dQw4w9WgXcQ',
+    '  https://youtu.be/dQw4w9WgXcQ  ',
+  ]) {
+    assert.equal(parseYouTubeId(input), 'dQw4w9WgXcQ', input);
+  }
+  assert.equal(youtubeWatchUrl('dQw4w9WgXcQ'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(youtubeLinkAt('dQw4w9WgXcQ', 19.9), 'https://youtu.be/dQw4w9WgXcQ?t=19');
+  for (const bad of ['', 'abc', 'https://vimeo.com/123', 'https://www.youtube.com/', 'not a url']) {
+    assert.throws(() => parseYouTubeId(bad), /not a YouTube URL/, bad);
+  }
+});
+
+test('videoExternalBlock is a video block (not embed) on the watch URL', () => {
+  assert.deepEqual(videoExternalBlock('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), {
+    object: 'block',
+    type: 'video',
+    video: { type: 'external', external: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } },
+  });
+});
+
+const CUTMAP: CutSegment[] = [
+  { originalStartMs: 0, originalEndMs: 20_000, condensedStartMs: 0, condensedEndMs: 20_000 },
+  { originalStartMs: 60_000, originalEndMs: 80_000, condensedStartMs: 20_000, condensedEndMs: 40_000 },
+];
+
+test('YouTube note link uses condensed seconds through the cut map', () => {
+  const n = note(70); // 70.473 s original → 30.473 s condensed
+  const block = noteBlock(n, { youtubeId: 'dQw4w9WgXcQ', cutmap: CUTMAP }) as Para;
+  assert.equal(block.paragraph.rich_text[0]!.text.link?.url, 'https://youtu.be/dQw4w9WgXcQ?t=30');
+  assert.equal(block.paragraph.rich_text[0]!.text.content, '[1:10] '); // the label stays in original time
+  // no cut map (original video on YouTube): original seconds
+  const plain = noteBlock(n, { youtubeId: 'dQw4w9WgXcQ' }) as Para;
+  assert.equal(plain.paragraph.rich_text[0]!.text.link?.url, 'https://youtu.be/dQw4w9WgXcQ?t=70');
+});
+
+test('a note past the last kept segment gets no YouTube link', () => {
+  const block = noteBlock(note(95), { youtubeId: 'dQw4w9WgXcQ', cutmap: CUTMAP }) as Para;
+  assert.equal(block.paragraph.rich_text[0]!.text.link, undefined);
+  assert.ok(!block.paragraph.rich_text.some((r) => r.text.content.startsWith('▶')));
+});
+
+test('with both --embed-url and --youtube the page link wins and ▶ carries the YouTube link', () => {
+  const block = noteBlock(note(70), {
+    embedUrl: 'https://host/report.html',
+    youtubeId: 'dQw4w9WgXcQ',
+    cutmap: CUTMAP,
+  }) as Para;
+  const [ts, play] = block.paragraph.rich_text;
+  assert.equal(ts!.text.link?.url, 'https://host/report.html?t=70'); // original seconds
+  assert.equal(play!.text.content, '▶ ');
+  assert.equal(play!.text.link?.url, 'https://youtu.be/dQw4w9WgXcQ?t=30'); // condensed seconds
+});
+
+test('summary callout names the carrier when the video is on YouTube', () => {
+  const data = {
+    session: { id: 's', title: 't', date: '', originalDurationMs: 90_000 },
+    video: { file: 'condensed.mp4', kind: 'condensed', durationMs: 40_000 },
+    notes: [], ranges: [], cutmap: CUTMAP, transcript: [], schemaVersion: 1,
+  } as unknown as ReportData;
+  type Callout = { callout: { rich_text: Array<{ text: { content: string } }> } };
+  const text = (summaryCallout(data, { youtube: true }) as Callout).callout.rich_text[0]!.text.content;
+  assert.ok(text.endsWith('· video: YouTube (unlisted)'), text);
+  const plain = (summaryCallout(data) as Callout).callout.rich_text[0]!.text.content;
+  assert.ok(!plain.includes('YouTube'));
+});

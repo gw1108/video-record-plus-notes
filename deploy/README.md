@@ -32,6 +32,30 @@ large faststart MP4) is enough — tech-stack report §5.5. No HLS, no app serve
 The same page also works straight from disk (`file://`), so "hosting" is only
 needed to share it.
 
+## Notion page, default route — unlisted YouTube upload (no hosting)
+
+The Notion page does not need a hosted report at all: the video carrier is
+an **unlisted YouTube upload** of `condensed.mp4` (tech-stack §5.0, decision
+2026-08-23). Three manual steps, ≈ 1 minute:
+
+1. YouTube Studio → *Create → Upload videos* → drop `<session>\report\condensed.mp4`.
+2. Title from `report\youtube\title.txt`; paste `report\youtube\description.txt`
+   into *Description* (its timestamp list becomes the chapter bar — `0:00`
+   first, ≥ 3 chapters, ≥ 10 s each, all guaranteed by the pipeline);
+   *Audience*: not made for kids; *Visibility*: **Unlisted**. Copy the
+   `https://youtu.be/<id>` link.
+3. ```powershell
+   playtest-notion publish "<session>\report" --youtube https://youtu.be/<id>
+   ```
+   The page gets a `video` block on the watch URL (the real YouTube player),
+   and every note's `[m:ss]` becomes `https://youtu.be/<id>?t=<condensed s>`.
+   The Notion file upload is skipped; it remains the fallback when no
+   `--youtube` is given (paid workspaces only — free plans cap uploads at
+   5 MiB).
+
+Paths A–C below are for teams that self-host (NDA footage, or the
+bidirectional seek↔notes widget inside Notion).
+
 ## Path B — Notion page with the embedded widget (Tier 3)
 
 Host the report exactly as in Path A, then publish with the widget URL:
@@ -45,7 +69,8 @@ playtest-notion publish "<session>\report" `
 `--embed-url` does two things: adds an embed block pointing at the hosted
 page, and turns every note's `[mm:ss]` into a Tier-2 link
 `…/report.html?t=<original-seconds>` that opens the page seeked to that
-moment.
+moment. Combined with `--youtube`, the page link stays on the timestamp and
+a `▶` after it carries the YouTube deep link.
 
 **Framing caveat (tech-stack §5.0):** Notion renders API-created embed
 blocks as plain iframes and *skips* its iFramely embeddability validation —

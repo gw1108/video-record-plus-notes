@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 /**
- * playtest-notion publish <reportDir> [--parent-page <id>]
+ * playtest-notion publish <reportDir> [--parent-page <id>] [--youtube URL|id]
  *                        [--embed-url URL] [--no-upload] [--token TOKEN]
+ *
+ * --youtube: the unlisted YouTube upload of condensed.mp4 (from the manual
+ * Studio upload of report/youtube/*.txt — see README). Places a video block
+ * and turns note timestamps into youtu.be?t= links; skips the Notion file
+ * upload (which stays as the fallback carrier without --youtube).
  *
  * Token: --token flag or NOTION_TOKEN env var; --parent-page falls back to
  * PARENT_ID. Both are also read from a `.env` file (cwd or any parent — see
@@ -33,7 +38,7 @@ export function loadDotEnv(start = process.cwd(), env: NodeJS.ProcessEnv = proce
 function fail(message: string): never {
   console.error(`error: ${message}`);
   console.error(
-    '\nusage: playtest-notion publish <reportDir> [--parent-page <id>] [--embed-url URL] [--no-upload] [--token TOKEN]',
+    '\nusage: playtest-notion publish <reportDir> [--parent-page <id>] [--youtube URL|id] [--embed-url URL] [--no-upload] [--token TOKEN]',
   );
   process.exit(1);
 }
@@ -67,6 +72,7 @@ async function main(): Promise<void> {
     parentPageId,
     token,
     embedUrl: flags.get('embed-url') as string | undefined,
+    youtube: flags.get('youtube') as string | undefined,
     uploadVideo: !flags.has('no-upload'),
   });
 }
