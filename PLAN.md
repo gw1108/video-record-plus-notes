@@ -1,26 +1,24 @@
 # PLAN — next steps
 
-State as of 2026-08-24: Phase 1 (recorder ↔ OBS ↔ pipeline) is
+State as of 2026-08-26: Phase 1 (recorder ↔ OBS ↔ pipeline) is
 validated against a **live OBS session** (M1, `hack/out-m1/`), the recorder
-UX round is live-verified (M5, `hack/out-m5/`), and the **Notion publisher
-has run against the live API** (M2 round 1, `hack/out-m2/`): page creation,
-single-part upload + attach, the free-plan fallback, 150-note batching and
-the transcript toggle all work; a missing `content_type` on upload creation
-was found and fixed; the CLI reads `NOTION_TOKEN`/`PARENT_ID` from `.env`.
-That test also settled a design question: **George's workspace is on the
-Free plan (5 MiB cap) and Notion-hosted video is the wrong carrier anyway**
-→ **decision 2026-08-23: the video on the Notion page is an *unlisted
-YouTube upload* of the condensed cut, with chapters auto-generated from the
-notes in the video description** (tech-stack report §5.0 "Decision
-2026-08-23", risk 9). The LGPL FFmpeg question is settled and verified (M6,
-`hack/out-m6/`). **2026-08-24: the YouTube code is written and unit-tested**
-— the pipeline emits `report/youtube/{title,description}.txt` with the
-note-derived chapter list (`youtube.py`, `pipeline/tests/test_youtube.py`;
-`playtest-pipeline youtube-kit <session>` rebuilds it), and
-`playtest-notion publish --youtube <url|id>` places the external `video`
-block and `youtu.be/<id>?t=<condensed s>` note links (`blocks.test.ts`).
-The kits for both test sessions are generated on disk; what remains in M2
-is the one manual upload + live render check (M2.3).
+UX round is live-verified (M5, `hack/out-m5/`), and the **default sharing
+path is proven live** (M2, `hack/out-m2/`). The Notion publisher's page
+creation, single-part upload + attach, Free-plan fallback, 150-note batching
+and transcript toggle ran against the live API on 2026-08-23; a missing
+`content_type` on upload creation was found and fixed. That test established
+that George's Free workspace has a 5 MiB cap and that Notion-hosted video is
+the wrong default carrier. The selected path is an **unlisted YouTube upload
+of the condensed cut**, with note-derived chapters in its description. On
+2026-08-24 that path passed its end-to-end human check: YouTube showed the
+chapter bar, an API-created Notion `video` block rendered and played the
+unlisted video, note `?t=` links opened at the expected time, and chapters
+appeared in the embedded player (`hack/out-m2/m2.3-result.txt`). The checked
+YouTube and Notion resources have since been removed or unshared, so the
+committed result artifact—not the old URLs—is the durable evidence. The
+pipeline kit and publisher behavior also remain covered by automated tests.
+The LGPL FFmpeg implementation route is settled and verified (M6,
+`hack/out-m6/`), but the release wheel does not yet contain the binaries.
 
 Research facts that shape M2 (sources in the tech-stack report §9, 77–87):
 
@@ -38,9 +36,10 @@ Research facts that shape M2 (sources in the tech-stack report §9, 77–87):
   weeks. `youtube.upload` is a sensitive OAuth scope; while the consent
   screen is in *Testing*, refresh tokens expire after 7 days. Quota is a
   non-issue (`videos.insert` = 1 unit of its own 100/day bucket).
-- Unverified, to test live: that an API-created Notion `video` block
-  renders an **unlisted** (not public) video, and that `&t=` inside the
-  block URL is honored.
+- Verified live 2026-08-24: an API-created Notion `video` block rendered
+  and played an **unlisted** video, note `?t=` links opened at the expected
+  time, and note-derived chapters appeared in both YouTube and the embedded
+  player (`hack/out-m2/m2.3-result.txt`).
 
 Consequence: **manual Studio upload of the pipeline's output is the product
 path** (unlisted immediately, ~1 min per session); the API uploader is an
@@ -58,53 +57,11 @@ Paths used below (all exist today):
   its `youtube/description.txt` has the expected 4 chapters `0:00 / 0:19 /
   0:49 / 0:59`). NB: the original OBS recording of this session is no longer
   on disk, so `process` cannot re-run there — `report/` (incl.
-  `condensed.mp4`) is intact and is all M2.3 needs.
-- Test pages already under the `PARENT_ID` page (archive with
-  `node hack/notion-page-dump.mjs <url> --archive`): `m5-live` ×2,
-  `m5-live (stress 150 notes)`, `m1-live`.
+  `condensed.mp4`) is intact and remains the main regression fixture.
 
 ---
 
-## M2 — YouTube carrier: live check (finish Phase 4)
-
-### M2.3 Live verification (George: one manual upload, ≈5 min)
-
-**Wizard:** `bash hack/wizard-m2.3-youtube-live.sh [<session dir>]` walks every
-step below (opens Studio with the kit on the clipboard, captures the URL to
-`report/youtube/url.txt`, runs the publish, prompts the three checks, writes
-`hack/out-m2/m2.3-result.txt` + the risk-9 line). The list below is the same
-procedure for reference.
-
-- [ ] **Upload `REPORT_BIG` to YouTube by hand**: YouTube Studio → *Create
-      → Upload videos* → drop `REPORT_BIG\condensed.mp4`; title from
-      `REPORT_BIG\youtube\title.txt`; paste `REPORT_BIG\youtube\description.txt`
-      into *Description*; *Audience*:
-      "No, it's not made for kids"; *Visibility*: **Unlisted**. Wait for
-      processing (SD first, HD a few minutes later). Copy the
-      `https://youtu.be/<id>` link.
-      Check on the watch page: the chapter bar shows 4 segments with the
-      note titles (if not: description has `0:00` first? every gap ≥ 10 s?
-      YouTube sometimes needs a few minutes after processing).
-- [ ] **Publish and verify the Notion page**:
-      ```powershell
-      cd C:\GameDev\video-record-plus-notes
-      npx playtest-notion publish "$REPORT_BIG" --youtube https://youtu.be/<id>
-      node hack/notion-page-dump.mjs <printed url>     # expect `video [external] https://www.youtube.com/watch?v=…`
-      ```
-      Open the page: (1) the video block shows the YouTube player and plays
-      (this is the "unlisted renders via API-created block" check — if it
-      shows "Video unavailable", temporarily set the video to Public and
-      reload to isolate the cause, then record the result in risk 9); (2)
-      click the `[0:19]` note link → YouTube opens at 0:19; (3) chapters
-      are visible in the embedded player's progress bar. Record the result
-      here, then delete the `m1-live` test pages you no longer need.
-- [ ] **Record the outcome** in the tech-stack report risk 9 (c): unlisted
-      render OK/blank, `&t=` honored yes/no.
-
-**Exit criterion:** a Notion page whose video is the unlisted YouTube upload
-with note chapters, and whose note timestamps jump to the moment on YouTube.
-
-### M2.4 API uploader (opt-in, gated on Google's audit — later)
+## M2 — API uploader (opt-in, gated on Google's audit — later)
 
 **Wizard:** `bash hack/wizard-m2.4-youtube-api.sh` covers the first two items
 (privacy page → Cloud project → API → consent screen → Desktop client JSON →
@@ -185,9 +142,11 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
          (copy one from `PlaytestSessions`): the log must show a clear
          "`playtest-pipeline` is not recognized…" line and *Pipeline exited
          with code 1* — the packaged app does not bundle Python by design.
-      5. Optional full run: install OBS 32 + Python 3.11+ in the sandbox,
-         `pip install playtest-pipeline` from a wheel (`python -m build
-         pipeline`), walk the wizard to the end, record 10 s, auto-run.
+      5. **Release exit run:** install OBS 32 + Python 3.11+ in the sandbox,
+         install `playtest-pipeline` from the selected release wheel, walk the
+         wizard to the end, record and mark a 10 s session, stop, run the
+         pipeline, and open the emitted report. The first usable release is
+         not proven by the expected missing-pipeline error alone.
 - [ ] **Code signing** (removes the SmartScreen warning; costs money):
       1. Buy an OV code-signing certificate (cheapest sane route in 2026:
          **Azure Trusted Signing**, ~US$10/month, or an OV cert from
@@ -262,11 +221,12 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 | GPL boundary is FSF doctrine, not case law (risk 2) | FFmpeg side settled in code (LGPL build verified, separate process, bundled-binary path); legal review still M6 |
 | Exclusive-fullscreen hotkey failures (risk 3 / tauri#7318) | Raw Input fallback verified live (injected input); **per-title fullscreen check still manual** (M5, steps above) |
 | Notion upload caps / embed validation (risk 7) | Upload path, Free-plan fallback and batching **verified live 2026-08-23**; `content_type` bug fixed; **carrier moved to YouTube** — Notion upload is the fallback only |
-| YouTube as carrier (risk 9) | API uploads locked private until the compliance audit → manual Studio upload is the product path (M2.3); **unlisted-in-API-created-video-block render and `&t=` honoring unverified** until M2.3 runs; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
+| YouTube as carrier (risk 9) | **Default manual path verified live 2026-08-24**: chapter bar rendered, API-created Notion block played the unlisted video, `?t=` links opened at the expected moment, and chapters appeared in the embedded player (`hack/out-m2/m2.3-result.txt`). API uploads remain locked private until the compliance audit; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
 | Notion domain drift | The API returns `app.notion.com` page URLs (2026); `deploy/` CSP allows `*.notion.so`, `*.notion.com`, `*.notion.site` — only matters for the optional M3 embed |
 | AMD/Intel encoder parity unknown (perf risk 4) | Untested — on any non-NVIDIA PC: install OBS, run the recorder's preflight (expects `amf`/`qsv` in the encoder label, no "shared with streaming" warning), then `npx electron hack/live-m5.mjs session` and check `hack/out-m5/session.json` `checks` are all true. Pipeline side: `--reencode` now has `h264_amf`/`h264_qsv` in its chain (args untested on real hardware) |
 | Mark anchor ≠ media timeline (found in M1) | outputDuration ~0.5 s early, chapters 0.7–1.3 s late; sidecar wins; TODO in `marks.ts` if tighter sync ever needed |
 | OBS pause needs dedicated rec encoder + restart (found in M1) | Preflight warns; tray Pause detects the silent no-op and logs `record-pause-ignored` instead of faking a pause (live-verified with a dedicated encoder in M5) |
 | torchaudio ≥ 2.9 needs torchcodec for audio I/O (found in M4) | Pipeline reads `mic.wav` with the stdlib instead of `silero_vad.read_audio`; the `[vad]` extra installs clean |
 | Python 3.14 on the dev rig | faster-whisper 1.2.1 + silero-vad + torch 2.13 cu126 all fine; **WhisperX has no 3.14-compatible release** (M4) — use a 3.12 venv for anything that needs it |
-| Installer built and smoke-run only on the dev rig | Unsigned; monorepo hoisting handled by electron-builder 26's workspace detection — **clean-machine run + signing pending (M5, steps above)** |
+| Installer built and smoke-run only on the dev rig | Unsigned; monorepo hoisting handled by electron-builder 26's workspace detection — **clean-machine end-to-end run pending** (M5). Signing is optional for the first usable release but remains desirable |
+| Live recording overhead | Research estimates the tuned OBS path at ~2–5% FPS plus negligible app overhead, but there is **no repository artifact measuring this app end to end under a GPU/CPU-intensive game**; release confidence remains benchmark-derived rather than rig-proven |

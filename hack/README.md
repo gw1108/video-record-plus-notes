@@ -49,7 +49,7 @@ The final implement stage has no tagged `.md` output — it modifies code instea
 
 ## Wizards (interactive, human-driven)
 
-- `wizard-m2.3-youtube-live.sh [<session dir>]` — PLAN M2.3: manual unlisted YouTube upload of a report's `condensed.mp4` with the generated kit, `playtest-notion publish --youtube`, the three render checks; result in `out-m2/m2.3-result.txt`.
+- `wizard-m2.3-youtube-live.sh [<session dir>]` — repeatable live regression check for the verified manual unlisted-YouTube flow: upload a report's `condensed.mp4` with the generated kit, run `playtest-notion publish --youtube`, and capture the three render checks in `out-m2/m2.3-result.txt`.
 - `wizard-m2.4-youtube-api.sh` — PLAN M2.4: Google Cloud project, YouTube Data API v3, OAuth consent screen (External/Testing), Desktop OAuth client JSON → `%APPDATA%\playtest-recorder\youtube-client.json`, compliance-audit request.
 
 Generated with the `/wizard` skill. Run `bash hack/<name>.sh` from PowerShell or Git Bash — from PowerShell `bash` is WSL's, and the wizard re-launches itself under Git Bash so it sees the Windows `node`/`python`. They never exit on a recoverable state: missing kit/build/credentials are generated or asked for, and failed commands offer retry/skip/abort. Ctrl-C and re-run resumes.
