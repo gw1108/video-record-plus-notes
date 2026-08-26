@@ -17,8 +17,11 @@ appeared in the embedded player (`verification/evidence/m2/m2.3-result.txt`). Th
 YouTube and Notion resources have since been removed or unshared, so the
 committed result artifact—not the old URLs—is the durable evidence. The
 pipeline kit and publisher behavior also remain covered by automated tests.
-The LGPL FFmpeg implementation route is settled and verified (M6,
-`verification/evidence/m6/`), but the release wheel does not yet contain the binaries.
+The LGPL FFmpeg implementation and release-wheel route are settled and verified (M6,
+`verification/evidence/m6/`): the reproducible release builder pins and validates the
+BtbN LGPL archive, produces a Windows-only wheel containing FFmpeg, ffprobe, their
+license notice, and the report template, and the installed wheel passed an isolated
+end-to-end pipeline smoke without PATH dependencies.
 
 Research facts that shape M2 (sources in the tech-stack report §9, 77–87):
 
@@ -126,6 +129,7 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 - [ ] **Clean-machine installer run** (needs a Windows PC/VM without
       Node/Rust/Python — a fresh Windows Sandbox works:
       *Turn Windows features on or off → Windows Sandbox*):
+      Repeatable guided run: `bash verification/wizards/wizard-m5-windows-sandbox.sh` (the wizard prepares release artifacts and mapped evidence automatically; do not close Sandbox until its host validation passes).
       1. Copy `apps\recorder\release\Playtest Recorder Setup 0.1.0.exe` in
          and run it. Expect the SmartScreen "Windows protected your PC"
          dialog (unsigned) → *More info → Run anyway*; installer offers an
@@ -179,25 +183,11 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 
 ## M6 — Product track (build-order step 7 + business, later)
 
-- [ ] **Ship the LGPL FFmpeg** (the *decision* half is done: `media.py`
-      resolves `$PLAYTEST_FFMPEG_DIR` → `playtest_pipeline/bin/` → PATH,
-      `pyproject` ships `bin/*` as package data, `--reencode` prefers
-      `h264_nvenc/amf/qsv` → `libopenh264` and never needs libx264 — all
-      verified against BtbN `ffmpeg-n8.1-latest-win64-lgpl-8.1.zip`,
-      `verification/evidence/m6/`). Remaining, for a release build:
-      1. Download that zip again (it is in this session's scratchpad only),
-         copy `bin\ffmpeg.exe`, `bin\ffprobe.exe` and `LICENSE.txt` into
-         `pipeline\playtest_pipeline\bin\` (gitignored), `python -m build
-         pipeline`, and check the wheel lists `playtest_pipeline/bin/ffmpeg.exe`
-         (`python -m zipfile -l dist\playtest_pipeline-*.whl | findstr bin/`).
-      2. Decide whether the recorder's installer README says "install the
-         pipeline wheel (FFmpeg included)" or "install FFmpeg (LGPL build) on
-         PATH" — the code supports both; the wheel route is the one that
-         needs no user action.
-      3. Legal review question list (risk 2): add "LGPL dynamic vs. static" —
-         we ship an unmodified static binary as a separate process, which is
-         the mere-aggregation case, but confirm. Add: YouTube API Services
-         Terms + privacy-policy wording for the uploader (M2.4).
+- [ ] **Release legal review** (risk 2): confirm the LGPL obligations for
+      shipping an unmodified static FFmpeg binary as a separate process, the
+      OBS/obs-websocket process boundary, the YouTube API Services Terms and
+      uploader privacy-policy wording, and whether a future installer may bundle
+      or auto-download OBS.
 - [ ] **Decide hosted/multi-user shell approach** (§5.6 Branch A vs. B —
       George's call): write a one-page decision note in
       `thoughts/shared/claude-code-design/` covering auth, storage of
@@ -218,7 +208,7 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 
 | Risk | Mitigation status |
 |---|---|
-| GPL boundary is FSF doctrine, not case law (risk 2) | FFmpeg side settled in code (LGPL build verified, separate process, bundled-binary path); legal review still M6 |
+| GPL boundary is FSF doctrine, not case law (risk 2) | FFmpeg release wheel verified with the pinned LGPL build as a separate process; legal review still M6 |
 | Exclusive-fullscreen hotkey failures (risk 3 / tauri#7318) | Raw Input fallback verified live (injected input); **per-title fullscreen check still manual** (M5, steps above) |
 | Notion upload caps / embed validation (risk 7) | Upload path, Free-plan fallback and batching **verified live 2026-08-23**; `content_type` bug fixed; **carrier moved to YouTube** — Notion upload is the fallback only |
 | YouTube as carrier (risk 9) | **Default manual path verified live 2026-08-24**: chapter bar rendered, API-created Notion block played the unlisted video, `?t=` links opened at the expected moment, and chapters appeared in the embedded player (`verification/evidence/m2/m2.3-result.txt`). API uploads remain locked private until the compliance audit; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
@@ -228,5 +218,5 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 | OBS pause needs dedicated rec encoder + restart (found in M1) | Preflight warns; tray Pause detects the silent no-op and logs `record-pause-ignored` instead of faking a pause (live-verified with a dedicated encoder in M5) |
 | torchaudio ≥ 2.9 needs torchcodec for audio I/O (found in M4) | Pipeline reads `mic.wav` with the stdlib instead of `silero_vad.read_audio`; the `[vad]` extra installs clean |
 | Python 3.14 on the dev rig | faster-whisper 1.2.1 + silero-vad + torch 2.13 cu126 all fine; **WhisperX has no 3.14-compatible release** (M4) — use a 3.12 venv for anything that needs it |
-| Installer built and smoke-run only on the dev rig | Unsigned; monorepo hoisting handled by electron-builder 26's workspace detection — **clean-machine end-to-end run pending** (M5). Signing is optional for the first usable release but remains desirable |
+| Installer built and smoke-run only on the dev rig | Unsigned; monorepo hoisting handled by electron-builder 26's workspace detection; the bundled-FFmpeg pipeline wheel passed an isolated local install and process smoke, but the **clean-machine end-to-end run remains pending** (M5). Signing is optional for the first usable release but remains desirable |
 | Live recording overhead | Research estimates the tuned OBS path at ~2–5% FPS plus negligible app overhead, but there is **no repository artifact measuring this app end to end under a GPU/CPU-intensive game**; release confidence remains benchmark-derived rather than rig-proven |

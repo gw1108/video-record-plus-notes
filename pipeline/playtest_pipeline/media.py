@@ -1,13 +1,9 @@
-"""ffmpeg/ffprobe helpers. An LGPL build is sufficient — everything here is
-demuxing, stream copy, PCM, and concat; `--reencode` uses hardware encoders or
-libopenh264, never libx264 (§6.2; verified against BtbN's n8.1 win64-lgpl
-build 2026-08-23, PLAN M6).
+"""ffmpeg/ffprobe helpers. The pipeline uses FFmpeg only as a separate post-session process.
 
 Binary lookup, first hit wins:
-  1. `$PLAYTEST_FFMPEG_DIR/ffmpeg[.exe]` — explicit override (installer, CI);
-  2. `playtest_pipeline/bin/ffmpeg[.exe]` — a bundled build dropped into the
-     package (gitignored; `pyproject` ships it as package data when present);
-  3. `ffmpeg` on PATH.
+  1. `$PLAYTEST_FFMPEG_DIR/ffmpeg[.exe]` — explicit override;
+  2. `playtest_pipeline/bin/ffmpeg[.exe]` — included in the selected Windows release wheel;
+  3. `ffmpeg` on PATH for source/editable installs.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=70.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,9 +11,7 @@ requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 authors = [{ name = "George", email = "georgetw1108@gmail.com" }]
 
-# The core pipeline needs only ffmpeg/ffprobe on PATH. STT and VAD are
-# optional heavyweight extras — the pipeline degrades gracefully without them
-# (notes fall back to empty text; segments come from marks alone).
+# The selected Windows release wheel carries FFmpeg. Source/editable installs resolve an external copy via PLAYTEST_FFMPEG_DIR or PATH. STT and VAD are optional heavyweight extras; the pipeline degrades gracefully without them (notes fall back to empty text; segments come from marks alone).
 dependencies = []
 
 [project.optional-dependencies]
@@ -27,10 +25,6 @@ playtest-pipeline = "playtest_pipeline.cli:main"
 [tool.setuptools.packages.find]
 include = ["playtest_pipeline*"]
 
-# Optional bundled FFmpeg (PLAN M6 / §6.2): drop `ffmpeg.exe` + `ffprobe.exe`
-# from an LGPL build (BtbN `…-win64-lgpl`) into `playtest_pipeline/bin/` before
-# `python -m build pipeline` and the wheel carries them; `media.py` prefers
-# them over PATH. The dir is gitignored — never commit binaries. Include the
-# build's LICENSE.txt alongside (LGPL §4/§6: keep the notice with the binary).
+# The release builder places the selected BtbN LGPL ffmpeg.exe, ffprobe.exe, and LICENSE.txt in this ignored directory before building the Windows-only wheel. media.py prefers these package files over PATH.
 [tool.setuptools.package-data]
-playtest_pipeline = ["bin/*"]
+playtest_pipeline = ["bin/*", "report-template.html"]

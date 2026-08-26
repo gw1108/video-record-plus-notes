@@ -16,6 +16,7 @@ from .session import Session
 
 TEMPLATE_ENV_VAR = "PLAYTEST_TEMPLATE"
 TEMPLATE_RELPATH = Path("packages") / "player-embed" / "report-template.html"
+PACKAGED_TEMPLATE_PATH = Path(__file__).with_name("report-template.html")
 DATA_PLACEHOLDER = "/*__REPORT_DATA__*/null"
 
 
@@ -191,21 +192,22 @@ def build_report_data(
 
 
 def find_template() -> Path:
-    """Template source of truth lives in packages/player-embed; resolve via
-    env var first, then by walking up from this file (dev checkout)."""
+    """Resolve an explicit override, the checkout source, or the packaged wheel fallback."""
     env = os.environ.get(TEMPLATE_ENV_VAR)
     if env:
         p = Path(env)
-        if p.exists():
+        if p.is_file():
             return p
         raise FileNotFoundError(f"{TEMPLATE_ENV_VAR} points at a missing file: {env}")
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / TEMPLATE_RELPATH
-        if candidate.exists():
+        if candidate.is_file():
             return candidate
+    if PACKAGED_TEMPLATE_PATH.is_file():
+        return PACKAGED_TEMPLATE_PATH
     raise FileNotFoundError(
-        f"Player template not found ({TEMPLATE_RELPATH}); set {TEMPLATE_ENV_VAR}."
+        f"Player template not found in the checkout or installed package; set {TEMPLATE_ENV_VAR}."
     )
 
 

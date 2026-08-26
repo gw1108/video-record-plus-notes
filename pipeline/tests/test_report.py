@@ -1,7 +1,12 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from playtest_pipeline import report
 from playtest_pipeline.plan import Window
-from playtest_pipeline.report import assign_note_text, build_chapters_vtt, build_report_data, text_in_range
+from playtest_pipeline.report import assign_note_text, build_chapters_vtt, build_report_data, find_template, render_report_html, text_in_range
 from playtest_pipeline.session import Session
 
 
@@ -46,6 +51,30 @@ class TestChaptersVtt(unittest.TestCase):
         self.assertEqual(lines[0], "WEBVTT")
         self.assertIn("00:00:42.000 --> 00:01:12.000", vtt)
         self.assertIn('"title": "#m1 issue"', vtt)
+
+
+class TestTemplateResolution(unittest.TestCase):
+    def test_packaged_template_is_normal_fallback_without_override_or_checkout(self):
+        self.assertTrue(report.PACKAGED_TEMPLATE_PATH.is_file())
+        with patch.dict(os.environ):
+            os.environ.pop(report.TEMPLATE_ENV_VAR, None)
+            with patch.object(report, "TEMPLATE_RELPATH", Path("missing-checkout") / "report-template.html"):
+                self.assertEqual(find_template(), report.PACKAGED_TEMPLATE_PATH)
+                rendered = render_report_html({"session": {"title": "Wheel install"}})
+        self.assertIn('"title": "Wheel install"', rendered)
+        self.assertNotIn(report.DATA_PLACEHOLDER, rendered)
+
+    def test_explicit_override_precedes_other_templates_and_missing_override_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            override = Path(tmp) / "override.html"
+            override.write_text(f"override:{report.DATA_PLACEHOLDER}", encoding="utf-8")
+            with patch.dict(os.environ, {report.TEMPLATE_ENV_VAR: str(override)}):
+                self.assertEqual(find_template(), override)
+                self.assertEqual(render_report_html({"value": 7}), 'override:{"value": 7}')
+            missing = Path(tmp) / "missing.html"
+            with patch.dict(os.environ, {report.TEMPLATE_ENV_VAR: str(missing)}):
+                with self.assertRaisesRegex(FileNotFoundError, report.TEMPLATE_ENV_VAR):
+                    find_template()
 
 
 class TestBuildReportData(unittest.TestCase):

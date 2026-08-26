@@ -46,40 +46,34 @@ playtest-pipeline youtube-kit <session_dir>     # rebuild report/youtube/*.txt o
 
 ## Install
 
+The selected Windows release wheel includes `ffmpeg.exe`, `ffprobe.exe`, and the FFmpeg license notice, so users installing that wheel do not install FFmpeg separately or add it to `PATH`:
+
+```powershell
+py -m pip install .\pipeline\dist\playtest_pipeline-0.1.0-py3-none-win_amd64.whl
 ```
-pip install -e pipeline            # core (ffmpeg/ffprobe must be on PATH)
-pip install -e "pipeline[all]"     # + faster-whisper STT + Silero VAD
+
+Source and editable installs intentionally do not download FFmpeg. For development, provide FFmpeg through `PLAYTEST_FFMPEG_DIR` or `PATH`:
+
+```powershell
+py -m pip install -e pipeline            # core source install; external FFmpeg required
+py -m pip install -e "pipeline[all]"     # + faster-whisper STT + Silero VAD
 ```
 
-`silero-vad` pulls in `torchaudio`; the pipeline reads `mic.wav` with the
-stdlib, so `torchcodec` (torchaudio's I/O backend since 2.9) is not needed.
+`silero-vad` pulls in `torchaudio`; the pipeline reads `mic.wav` with the stdlib, so `torchcodec` (torchaudio's I/O backend since 2.9) is not needed.
 
-### FFmpeg (which binary, and the LGPL rule)
+### FFmpeg release route and resolution
 
-`media.py` looks for `ffmpeg`/`ffprobe` in this order and `process` prints
-which one it took (`ffmpeg: PATH (…)`):
+`media.py` resolves each FFmpeg tool in this order and `process` prints the selected origin:
 
-1. `$PLAYTEST_FFMPEG_DIR` — an explicit directory (installer, CI, tests);
-2. `playtest_pipeline/bin/` — a bundled build (gitignored; when present,
-   `python -m build pipeline` ships it in the wheel as package data);
-3. `PATH`.
+1. `$PLAYTEST_FFMPEG_DIR` — an explicit directory for development, CI, and controlled overrides;
+2. `playtest_pipeline/bin/` — the copy included in the selected Windows release wheel;
+3. `PATH` — the source/editable-install fallback.
 
-Anything **shipped** must use an **LGPL** build (tech-stack §6.2): the
-dev-machine gyan.dev build is `--enable-gpl` and fine locally, but not
-redistributable with this product. The pipeline only needs LGPL features —
-demux, stream copy, PCM, concat; `--reencode` picks the first available of
-`h264_nvenc` → `h264_amf` → `h264_qsv` → `libopenh264` → `libx264` (the last
-exists only in GPL builds and is never reached on an LGPL one). Verified
-2026-08-23 with BtbN's `ffmpeg-n8.1-latest-win64-lgpl-8.1.zip`
-(`verification/evidence/m6/`): `enable-gpl` absent, `--disable-libx264`, full pipeline run
-+ `--reencode` + a `libopenh264` encode all pass.
+The selected wheel uses the unmodified `ffmpeg.exe`, `ffprobe.exe`, and `LICENSE.txt` from BtbN's `ffmpeg-n8.1-latest-win64-lgpl-8.1.zip`. The release builder verifies the pinned archive, the executables' LGPL runtime notice and BtbN configuration signature, absence of `--enable-gpl`, explicit `--disable-libx264`, and absence of a `libx264` encoder before it builds. FFmpeg remains a separate process; the pipeline does not link libav* or libobs.
 
-To bundle: unzip an `…-win64-lgpl` build from
-<https://github.com/BtbN/FFmpeg-Builds/releases>, copy `bin/ffmpeg.exe`,
-`bin/ffprobe.exe` and the zip's `LICENSE.txt` into `playtest_pipeline/bin/`,
-then build the wheel. Keep FFmpeg a separate process/binary (never link
-libav*) — that keeps the LGPL obligations to "ship the notice + the
-unmodified binary", the same boundary the recorder keeps with OBS.
+Release maintainers build this artifact with `py pipeline/tools/build_release_wheel.py`. The selected archive identity is pinned in `pipeline/ffmpeg-release.json`; downloaded files under `pipeline/.release/`, copied package binaries under `pipeline/playtest_pipeline/bin/`, and wheels under `pipeline/dist/` are ignored release artifacts. If BtbN replaces its mutable `latest` asset, update the pin only as an intentional release change after repeating the executable checks.
+
+This technical packaging verification is not a legal review. Separate release legal review remains pending.
 
 ### Model choice
 

@@ -78,7 +78,13 @@ test-results/
 target/
 
 # Python (post-session pipeline)
-pipeline/playtest_pipeline/bin/   # optional bundled LGPL ffmpeg/ffprobe (see pyproject)
+# Downloaded FFmpeg release archive and copied release-wheel payload
+pipeline/.release/
+pipeline/playtest_pipeline/bin/
+
+# Windows Sandbox M5 transfer kits and copied recordings (dated outcome Markdown remains tracked)
+verification/evidence/m5/.sandbox-transfer/
+
 __pycache__/
 *.py[cod]
 *.egg-info/

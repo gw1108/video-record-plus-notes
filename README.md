@@ -70,9 +70,7 @@ helper ✅ (webcam track dropped 2026-08-23) → (3) STT/VAD ✅ → (4) condens
 
 ## Prerequisites
 
-- **Windows**, Node 20+, Python 3.11+, **ffmpeg/ffprobe on PATH** (or
-  `PLAYTEST_FFMPEG_DIR` / a bundled copy — see `pipeline/README.md` → FFmpeg;
-  any build works locally, shipping requires an LGPL one)
+- **Windows**, Node 20+, Python 3.11+. The selected pipeline release wheel includes FFmpeg, so release-wheel users do not install it separately. Source/editable pipeline installs still require `PLAYTEST_FFMPEG_DIR` or `ffmpeg`/`ffprobe` on `PATH`; see `pipeline/README.md` → FFmpeg release route and resolution.
 - **OBS Studio 30.2+** (this machine: 32.2.2 ✓) with the WebSocket server
   enabled: OBS → Tools → WebSocket Server Settings → Enable. You do not need to
   copy the port/password by hand — the recorder's **Auto-detect from OBS**
@@ -86,7 +84,10 @@ helper ✅ (webcam track dropped 2026-08-23) → (3) STT/VAD ✅ → (4) condens
 ```powershell
 npm install
 npm run build
-pip install -e pipeline               # core pipeline (add "[all]" for STT+VAD; needs torch)
+# Release route: install the selected Windows wheel, which includes FFmpeg
+py -m pip install .\pipeline\dist\playtest_pipeline-0.1.0-py3-none-win_amd64.whl
+# Source-development alternative: external FFmpeg is required via PLAYTEST_FFMPEG_DIR or PATH
+py -m pip install -e pipeline               # add "[all]" for STT+VAD; needs torch
 cargo build --release --manifest-path helper/capture-helper/Cargo.toml   # optional
 
 npm run recorder                      # launch the recorder
