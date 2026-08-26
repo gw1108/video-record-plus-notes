@@ -254,21 +254,21 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: PLAN.md M2.3 — live verification of the YouTube carrier.
 #
-#   bash hack/wizard-m2.3-youtube-live.sh [<session dir or report dir>]
+#   bash verification/wizards/wizard-m2.3-youtube-live.sh [<session dir or report dir>]
 #
 # Default target is REPORT_BIG (m1-live). Values captured:
 #   NOTION_TOKEN, PARENT_ID → .env (asked only if missing)
 #   YOUTUBE_URL             → <report>/youtube/url.txt   (the unlisted upload)
-#   NOTION_URL + 4 results  → hack/out-m2/m2.3-result.txt
+#   NOTION_URL + 4 results  → verification/evidence/m2/m2.3-result.txt
 # The wizard never gives up on a recoverable state: it generates what is
 # missing, asks for what it cannot make, and retries commands on request.
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=6
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
-RESULT_FILE="$REPO_DIR/hack/out-m2/m2.3-result.txt"
+RESULT_FILE="$REPO_DIR/verification/evidence/m2/m2.3-result.txt"
 DEFAULT_TARGET='C:\Users\George\Videos\PlaytestSessions\2026-08-23_114134_m1-live'
 
 # to_clip TEXT copies to the Windows clipboard when clip.exe exists.
@@ -406,7 +406,7 @@ until [[ "${NOTION_URL:-}" == https://* ]]; do
   ask NOTION_URL "Paste the 'Published:' URL (or the page URL from Notion):"
 done
 printf '\n'; say "Block dump (expect a line:  video [external] https://www.youtube.com/watch?v=$YT_ID):"
-node hack/notion-page-dump.mjs "$NOTION_URL" 2>&1 | sed 's/^/    /' | head -20 || warn "page dump failed (non-fatal — check the page by eye in the next stage)"
+node verification/notion/notion-page-dump.mjs "$NOTION_URL" 2>&1 | sed 's/^/    /' | head -20 || warn "page dump failed (non-fatal — check the page by eye in the next stage)"
 pause "Press Enter to open the Notion page for the three render checks (stage 5)."
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
@@ -448,7 +448,7 @@ if confirm "Archive the older test pages under PARENT_ID now (m1-live / m5-live 
   while :; do
     ask OLD_PAGE "Page URL to archive (Enter = done):"
     [[ -z "$OLD_PAGE" ]] && break
-    run_step "archive $OLD_PAGE" node hack/notion-page-dump.mjs "$OLD_PAGE" --archive
+    run_step "archive $OLD_PAGE" node verification/notion/notion-page-dump.mjs "$OLD_PAGE" --archive
     OLD_PAGE=""
   done
 fi

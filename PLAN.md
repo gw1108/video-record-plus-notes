@@ -1,9 +1,9 @@
 # PLAN — next steps
 
 State as of 2026-08-26: Phase 1 (recorder ↔ OBS ↔ pipeline) is
-validated against a **live OBS session** (M1, `hack/out-m1/`), the recorder
-UX round is live-verified (M5, `hack/out-m5/`), and the **default sharing
-path is proven live** (M2, `hack/out-m2/`). The Notion publisher's page
+validated against a **live OBS session** (M1, `verification/evidence/m1/`), the recorder
+UX round is live-verified (M5, `verification/evidence/m5/`), and the **default sharing
+path is proven live** (M2, `verification/evidence/m2/`). The Notion publisher's page
 creation, single-part upload + attach, Free-plan fallback, 150-note batching
 and transcript toggle ran against the live API on 2026-08-23; a missing
 `content_type` on upload creation was found and fixed. That test established
@@ -13,12 +13,12 @@ of the condensed cut**, with note-derived chapters in its description. On
 2026-08-24 that path passed its end-to-end human check: YouTube showed the
 chapter bar, an API-created Notion `video` block rendered and played the
 unlisted video, note `?t=` links opened at the expected time, and chapters
-appeared in the embedded player (`hack/out-m2/m2.3-result.txt`). The checked
+appeared in the embedded player (`verification/evidence/m2/m2.3-result.txt`). The checked
 YouTube and Notion resources have since been removed or unshared, so the
 committed result artifact—not the old URLs—is the durable evidence. The
 pipeline kit and publisher behavior also remain covered by automated tests.
 The LGPL FFmpeg implementation route is settled and verified (M6,
-`hack/out-m6/`), but the release wheel does not yet contain the binaries.
+`verification/evidence/m6/`), but the release wheel does not yet contain the binaries.
 
 Research facts that shape M2 (sources in the tech-stack report §9, 77–87):
 
@@ -39,7 +39,7 @@ Research facts that shape M2 (sources in the tech-stack report §9, 77–87):
 - Verified live 2026-08-24: an API-created Notion `video` block rendered
   and played an **unlisted** video, note `?t=` links opened at the expected
   time, and note-derived chapters appeared in both YouTube and the embedded
-  player (`hack/out-m2/m2.3-result.txt`).
+  player (`verification/evidence/m2/m2.3-result.txt`).
 
 Consequence: **manual Studio upload of the pipeline's output is the product
 path** (unlisted immediately, ~1 min per session); the API uploader is an
@@ -63,7 +63,7 @@ Paths used below (all exist today):
 
 ## M2 — API uploader (opt-in, gated on Google's audit — later)
 
-**Wizard:** `bash hack/wizard-m2.4-youtube-api.sh` covers the first two items
+**Wizard:** `bash verification/wizards/wizard-m2.4-youtube-api.sh` covers the first two items
 (privacy page → Cloud project → API → consent screen → Desktop client JSON →
 audit form; ids to `.env`, client JSON to `%APPDATA%\playtest-recorder\`).
 The uploader CLI itself (item 3) is code, written after the audit passes.
@@ -101,7 +101,7 @@ The YouTube carrier removes the need for a hosted URL. `deploy/` stays the
 **self-host-pure** output (Path A) and the only route to bidirectional
 seek↔notes sync. If a team ever wants that *inside* Notion: Caddy +
 cloudflared are installed, `deploy/README.md` Path C has the tunnel recipe,
-`hack/out-m3/local-headers.txt` proves the headers, and the two remaining
+`verification/evidence/m3/local-headers.txt` proves the headers, and the two remaining
 steps are: run the tunnel, `npx playtest-notion publish "$REPORT_BIG"
 --embed-url https://<random>.trycloudflare.com/report.html --no-upload`,
 verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
@@ -184,7 +184,7 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
       `pyproject` ships `bin/*` as package data, `--reencode` prefers
       `h264_nvenc/amf/qsv` → `libopenh264` and never needs libx264 — all
       verified against BtbN `ffmpeg-n8.1-latest-win64-lgpl-8.1.zip`,
-      `hack/out-m6/`). Remaining, for a release build:
+      `verification/evidence/m6/`). Remaining, for a release build:
       1. Download that zip again (it is in this session's scratchpad only),
          copy `bin\ffmpeg.exe`, `bin\ffprobe.exe` and `LICENSE.txt` into
          `pipeline\playtest_pipeline\bin\` (gitignored), `python -m build
@@ -221,9 +221,9 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 | GPL boundary is FSF doctrine, not case law (risk 2) | FFmpeg side settled in code (LGPL build verified, separate process, bundled-binary path); legal review still M6 |
 | Exclusive-fullscreen hotkey failures (risk 3 / tauri#7318) | Raw Input fallback verified live (injected input); **per-title fullscreen check still manual** (M5, steps above) |
 | Notion upload caps / embed validation (risk 7) | Upload path, Free-plan fallback and batching **verified live 2026-08-23**; `content_type` bug fixed; **carrier moved to YouTube** — Notion upload is the fallback only |
-| YouTube as carrier (risk 9) | **Default manual path verified live 2026-08-24**: chapter bar rendered, API-created Notion block played the unlisted video, `?t=` links opened at the expected moment, and chapters appeared in the embedded player (`hack/out-m2/m2.3-result.txt`). API uploads remain locked private until the compliance audit; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
+| YouTube as carrier (risk 9) | **Default manual path verified live 2026-08-24**: chapter bar rendered, API-created Notion block played the unlisted video, `?t=` links opened at the expected moment, and chapters appeared in the embedded player (`verification/evidence/m2/m2.3-result.txt`). API uploads remain locked private until the compliance audit; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
 | Notion domain drift | The API returns `app.notion.com` page URLs (2026); `deploy/` CSP allows `*.notion.so`, `*.notion.com`, `*.notion.site` — only matters for the optional M3 embed |
-| AMD/Intel encoder parity unknown (perf risk 4) | Untested — on any non-NVIDIA PC: install OBS, run the recorder's preflight (expects `amf`/`qsv` in the encoder label, no "shared with streaming" warning), then `npx electron hack/live-m5.mjs session` and check `hack/out-m5/session.json` `checks` are all true. Pipeline side: `--reencode` now has `h264_amf`/`h264_qsv` in its chain (args untested on real hardware) |
+| AMD/Intel encoder parity unknown (perf risk 4) | Untested — on any non-NVIDIA PC: install OBS, run the recorder's preflight (expects `amf`/`qsv` in the encoder label, no "shared with streaming" warning), then `npx electron verification/harnesses/live-m5.mjs session` and check `verification/evidence/m5/session.json` `checks` are all true. Pipeline side: `--reencode` now has `h264_amf`/`h264_qsv` in its chain (args untested on real hardware) |
 | Mark anchor ≠ media timeline (found in M1) | outputDuration ~0.5 s early, chapters 0.7–1.3 s late; sidecar wins; TODO in `marks.ts` if tighter sync ever needed |
 | OBS pause needs dedicated rec encoder + restart (found in M1) | Preflight warns; tray Pause detects the silent no-op and logs `record-pause-ignored` instead of faking a pause (live-verified with a dedicated encoder in M5) |
 | torchaudio ≥ 2.9 needs torchcodec for audio I/O (found in M4) | Pipeline reads `mic.wav` with the stdlib instead of `silero_vad.read_audio`; the `[vad]` extra installs clean |

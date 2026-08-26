@@ -71,7 +71,7 @@ demux, stream copy, PCM, concat; `--reencode` picks the first available of
 `h264_nvenc` → `h264_amf` → `h264_qsv` → `libopenh264` → `libx264` (the last
 exists only in GPL builds and is never reached on an LGPL one). Verified
 2026-08-23 with BtbN's `ffmpeg-n8.1-latest-win64-lgpl-8.1.zip`
-(`hack/out-m6/`): `enable-gpl` absent, `--disable-libx264`, full pipeline run
+(`verification/evidence/m6/`): `enable-gpl` absent, `--disable-libx264`, full pipeline run
 + `--reencode` + a `libopenh264` encode all pass.
 
 To bundle: unzip an `…-win64-lgpl` build from

@@ -1,6 +1,6 @@
 """Make a report bundle with N notes for the Notion >100-block / pacing test (PLAN M2).
 
-    python hack/notion-stress-bundle.py <report_dir> <out_dir> [--notes 150]
+    python verification/notion/notion-stress-bundle.py <report_dir> <out_dir> [--notes 150]
 
 Copies report_data.json (with the notes list padded to N synthetic notes) and
 the small sidecar files into <out_dir>; condensed.mp4 is NOT copied, so

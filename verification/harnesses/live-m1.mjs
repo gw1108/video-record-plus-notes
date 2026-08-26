@@ -5,7 +5,7 @@
  * runPreflight/applyRecommended, SessionController incl. globalShortcut
  * hotkey registration, SidecarWriter, MarkAnchorService).
  *
- * Run:  npx electron hack/live-m1.mjs <phase>
+ * Run:  npx electron verification/harnesses/live-m1.mjs <phase>
  * Phases: preflight | routing | session | obs-stop | kill | raw-input
  *
  * Hotkeys are injected via WScript.Shell SendKeys (goes through the real OS
@@ -19,13 +19,13 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import OBSWebSocket from 'obs-websocket-js';
-import { ObsClient } from '../apps/recorder/dist/main/obs.js';
-import { runPreflight, applyRecommended } from '../apps/recorder/dist/main/preflight.js';
-import { SessionController } from '../apps/recorder/dist/main/recording.js';
-import { monoMs } from '../apps/recorder/dist/main/util.js';
+import { ObsClient } from '../../apps/recorder/dist/main/obs.js';
+import { runPreflight, applyRecommended } from '../../apps/recorder/dist/main/preflight.js';
+import { SessionController } from '../../apps/recorder/dist/main/recording.js';
+import { monoMs } from '../../apps/recorder/dist/main/util.js';
 
 const REPO = 'C:\\GameDev\\video-record-plus-notes';
-const OUT_DIR = join(REPO, 'hack', 'out-m1');
+const OUT_DIR = join(REPO, 'verification', 'evidence', 'm1');
 const PASSWORD = process.env.OBS_WS_PASSWORD ?? '';
 const LOOPBACK_INPUT = 'TTS Loopback (m1 test)';
 
@@ -286,7 +286,7 @@ async function phaseRawInput(obs) {
 app.whenReady().then(async () => {
   let code = 0;
   try {
-    if (!phase) throw new Error('usage: electron hack/live-m1.mjs <preflight|routing|session|obs-stop|kill|raw-input>');
+    if (!phase) throw new Error('usage: electron verification/harnesses/live-m1.mjs <preflight|routing|session|obs-stop|kill|raw-input>');
     console.log(`=== phase: ${phase} ===`);
     if (phase === 'routing') {
       await phaseRouting();

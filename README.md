@@ -58,10 +58,11 @@ reports this repo was built from:
 | `pipeline/` | Python post-session pipeline (VAD/STT/condense/report) | ✅ working + tests |
 | `packages/player-embed` | Self-contained report page template (segment-skip + note-sync + `?t=` deep links) | ✅ working |
 | `deploy/` | nginx / Caddy recipe for hosting a report dir (self-host, or framed inside Notion) | ✅ written, not run on a live host |
-| `packages/notion-publisher` | Notion page publisher CLI (YouTube `video` block + `youtu.be?t=` note links, note blocks, transcript toggle; Notion file upload as fallback) | ✅ page + notes + batching + file-upload fallback live-verified 2026-08-23; default unlisted-YouTube path live-verified end to end 2026-08-24 (`hack/out-m2/m2.3-result.txt`) |
+| `packages/notion-publisher` | Notion page publisher CLI (YouTube `video` block + `youtu.be?t=` note links, note blocks, transcript toggle; Notion file upload as fallback) | ✅ page + notes + batching + file-upload fallback live-verified 2026-08-23; default unlisted-YouTube path live-verified end to end 2026-08-24 (`verification/evidence/m2/m2.3-result.txt`) |
 | `helper/capture-helper` | Rust native helper: Raw Input hotkey fallback + pad listener | ✅ built, bundled into the installer |
 | `sdk/unity` + `docs/telemetry-protocol.md` | Optional in-game-time telemetry (own games) | ✅ reference impl |
-| `hack/` | Live-test harnesses (`live-m1.mjs`, `live-m5.mjs`, evidence in `out-m*/`) + unrelated Claude agent pipeline tooling | — |
+| `verification/` | Live-test harnesses, diagnostics, manual verification wizards, and committed milestone evidence | — |
+| `hack/` | Claude agent pipeline tooling | — |
 
 Build order follows tech-stack report §7: (1) recorder ✅ → (2) Raw Input
 helper ✅ (webcam track dropped 2026-08-23) → (3) STT/VAD ✅ → (4) condensed export + report page ✅ + Notion publisher ✅ + default manual unlisted-YouTube sharing path ✅ (live 2026-08-24)

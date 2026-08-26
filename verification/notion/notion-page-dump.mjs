@@ -2,7 +2,7 @@
 /**
  * Dump a published Notion page's blocks for PLAN M2/M3 verification:
  *
- *     node hack/notion-page-dump.mjs <page-url-or-id> [--archive]
+ *     node verification/notion/notion-page-dump.mjs <page-url-or-id> [--archive]
  *
  * Prints one line per top-level block (type + first 90 chars of text, video
  * file kind/size, embed URL, toggle child count) and a summary. `--archive`
@@ -10,12 +10,12 @@
  * Token from NOTION_TOKEN or .env (same loader as the CLI).
  */
 import { Client } from '@notionhq/client';
-import { loadDotEnv } from '../packages/notion-publisher/dist/cli.js';
+import { loadDotEnv } from '../../packages/notion-publisher/dist/cli.js';
 
 loadDotEnv();
 const [target, ...rest] = process.argv.slice(2);
 if (!target) {
-  console.error('usage: node hack/notion-page-dump.mjs <page-url-or-id> [--archive]');
+  console.error('usage: node verification/notion/notion-page-dump.mjs <page-url-or-id> [--archive]');
   process.exit(1);
 }
 const id = (target.match(/([0-9a-f]{32})(?:[^0-9a-f]|$)/i) ?? [])[1] ?? target;

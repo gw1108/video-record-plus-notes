@@ -254,7 +254,7 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: PLAN.md M2.4 — prepare the (opt-in) YouTube API uploader.
 #
-#   bash hack/wizard-m2.4-youtube-api.sh
+#   bash verification/wizards/wizard-m2.4-youtube-api.sh
 #
 # Google Cloud project → YouTube Data API v3 → OAuth consent screen (External,
 # Testing) → Desktop OAuth client JSON → compliance audit request. Values:
@@ -267,7 +267,7 @@ finish() {
 
 TOTAL_STAGES=6
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
 
 APPDATA_U="$(to_unix "${APPDATA:-$HOME/AppData/Roaming}")"

@@ -106,7 +106,7 @@ Check `https://<random>.trycloudflare.com/report.html` plays in a normal tab,
 then publish with `--embed-url https://<random>.trycloudflare.com/report.html`
 (`--no-upload` if the workspace is on the Free plan). Stop with `Ctrl+C` on
 cloudflared and `caddy stop`. Verified 2026-08-23 up to the tunnel step
-(`hack/out-m3/local-headers.txt`: CSP present, no `X-Frame-Options`, `206`
+(`verification/evidence/m3/local-headers.txt`: CSP present, no `X-Frame-Options`, `206`
 Range replies, `video/mp4` + `text/vtt`).
 
 ## Notes

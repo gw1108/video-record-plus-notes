@@ -5,7 +5,7 @@
  * shared-encoder no-op detection), configurable mark labels, the segment
  * policy baked into the pipeline command, and the in-app PipelineRunner.
  *
- * Run:  npx electron hack/live-m5.mjs <phase>
+ * Run:  npx electron verification/harnesses/live-m5.mjs <phase>
  * Phases:
  *   session   — start → mark(issue) → pause → mark while paused → resume →
  *               mark → stop; asserts sidecar labels/events and the command.
@@ -13,19 +13,19 @@
  *               (or the dir given as the next argument) and waits for done.
  *
  * Reads the OBS websocket password from OBS's own plugin config (same file
- * the app's Auto-detect uses). Evidence JSON lands in hack/out-m5/.
+ * the app's Auto-detect uses). Evidence JSON lands in verification/evidence/m5/.
  */
 import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ObsClient } from '../apps/recorder/dist/main/obs.js';
-import { PipelineRunner } from '../apps/recorder/dist/main/pipeline.js';
-import { SessionController, buildPipelineCommand } from '../apps/recorder/dist/main/recording.js';
-import { listSessions } from '../apps/recorder/dist/main/sessions.js';
-import { fKeyBinding, DEFAULT_PIPELINE } from '../apps/recorder/dist/main/config.js';
+import { ObsClient } from '../../apps/recorder/dist/main/obs.js';
+import { PipelineRunner } from '../../apps/recorder/dist/main/pipeline.js';
+import { SessionController, buildPipelineCommand } from '../../apps/recorder/dist/main/recording.js';
+import { listSessions } from '../../apps/recorder/dist/main/sessions.js';
+import { fKeyBinding, DEFAULT_PIPELINE } from '../../apps/recorder/dist/main/config.js';
 
 const REPO = 'C:\\GameDev\\video-record-plus-notes';
-const OUT_DIR = join(REPO, 'hack', 'out-m5');
+const OUT_DIR = join(REPO, 'verification', 'evidence', 'm5');
 const SESSIONS_DIR = 'C:\\Users\\George\\Videos\\PlaytestSessions';
 const phase = process.argv.find((a) => ['session', 'pipeline'].includes(a)) ?? 'session';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
