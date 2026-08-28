@@ -54,7 +54,8 @@
       </div>
       <p class="hint">Every session in the sessions folder. <em>Run pipeline</em> spawns
         <code class="inline">playtest-pipeline</code> with the settings below and streams its output into the log;
-        <em>Open report</em> opens the finished <code class="inline">report.html</code>.</p>
+        <em>Open report</em> opens the finished <code class="inline">report.html</code>;
+        <em>Delete</em> asks first, then moves the session folder to the Recycle Bin.</p>
     </section>
 
     <section class="card">
@@ -184,8 +185,19 @@
     </section>
 
     <section class="card">
-      <h2>Log</h2>
-      <pre id="log"></pre>
+      <div class="log-head">
+        <h2>Log</h2>
+        <div class="log-tools">
+          <input id="log-search" type="search" placeholder="Search log (Ctrl+F)" autocomplete="off" spellcheck="false" />
+          <span id="log-matches" class="log-matches"></span>
+          <button id="log-prev" class="subtle" type="button" title="Previous match (Shift+Enter)">&#8593;</button>
+          <button id="log-next" class="subtle" type="button" title="Next match (Enter)">&#8595;</button>
+          <button id="log-clear" class="subtle" type="button" title="Clear the log">Clear</button>
+        </div>
+      </div>
+      <pre id="log" tabindex="0"></pre>
+      <p class="hint">Search hides non-matching lines; Enter / Shift+Enter step through the matches. Drag the bottom-right
+        corner to resize. New lines only auto-scroll while the view is parked at the bottom.</p>
     </section>
   </main>
 

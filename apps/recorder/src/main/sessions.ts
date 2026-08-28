@@ -2,7 +2,8 @@
  * Session browser backend: enumerate past sessions under `sessionsDir` by
  * reading each directory's sidecar (`session.json`; the journal when the
  * sidecar is missing after a crash). Read-only — the pipeline and the
- * recorder are the only writers.
+ * recorder are the only writers; deleting a session (main's `sessions:delete`)
+ * moves the whole directory to the Recycle Bin rather than editing anything.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

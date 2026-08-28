@@ -1,0 +1,13 @@
+electron 38.8.6 — session-delete harness
+sessions root: C:\Users\George\AppData\Local\Temp\playtest-delete-rHc56V
+PASS  entryFor accepts a session directory
+PASS  entryFor rejects a non-session directory
+PASS  recordingExists true when the file is on disk
+PASS  recordingExists false when the recording is gone
+PASS  session folder left the disk
+PASS  recording survives when the checkbox is not ticked
+PASS  session folder is in the Recycle Bin (restorable)
+PASS  recording left the disk on the checkbox path
+PASS  recording is in the Recycle Bin (restorable)
+PASS  trashItem rejects a missing path (surfaces as an error in the UI)
+all checks passed

@@ -31,6 +31,8 @@ const progressFill = $<HTMLDivElement>('progress-fill');
 const obsInfo = $<HTMLDivElement>('obs-info');
 const preflightEl = $<HTMLDivElement>('preflight');
 const logEl = $<HTMLPreElement>('log');
+const logSearchEl = $<HTMLInputElement>('log-search');
+const logMatchesEl = $<HTMLSpanElement>('log-matches');
 const startBtn = $<HTMLButtonElement>('start-session');
 const preflightBtn = $<HTMLButtonElement>('run-preflight');
 const applyBtn = $<HTMLButtonElement>('apply-recommended');
@@ -240,12 +242,163 @@ function formatTimecode(ms: number): string {
   return h > 0 ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
 }
 
+// ---------------------------------------------------------------------------
+// Log pane. Every line is kept as an entry so the search box can re-render it:
+// non-matching lines are hidden, matching text gets wrapped in <mark>, and
+// prev/next walks the matching lines. Streaming output only auto-scrolls while
+// the view is parked at the bottom, so reading history isn't yanked away.
+// ---------------------------------------------------------------------------
+
+type LogLevel = 'info' | 'warn' | 'error' | 'pipeline';
+
+interface LogEntry {
+  text: string;
+  el: HTMLSpanElement;
+}
+
+const logEntries: LogEntry[] = [];
+let logQuery = '';
+let logMatches: HTMLSpanElement[] = [];
+let logMatchIndex = -1;
+let logPinned = true;
+
+/** Repaints one line for the current query; returns whether it matches. */
+function paintLogLine(entry: LogEntry): boolean {
+  const { el, text } = entry;
+  el.classList.remove('current');
+  el.textContent = '';
+  if (!logQuery) {
+    el.textContent = text;
+    el.hidden = false;
+    return false;
+  }
+  const needle = logQuery.toLowerCase();
+  const hay = text.toLowerCase();
+  let at = hay.indexOf(needle);
+  if (at === -1) {
+    el.textContent = text;
+    el.hidden = true;
+    return false;
+  }
+  // Build the highlight with DOM nodes, never innerHTML — log lines carry
+  // arbitrary pipeline/OBS output.
+  let from = 0;
+  while (at !== -1) {
+    if (at > from) el.appendChild(document.createTextNode(text.slice(from, at)));
+    const hit = document.createElement('mark');
+    hit.textContent = text.slice(at, at + needle.length);
+    el.appendChild(hit);
+    from = at + needle.length;
+    at = hay.indexOf(needle, from);
+  }
+  if (from < text.length) el.appendChild(document.createTextNode(text.slice(from)));
+  el.hidden = false;
+  return true;
+}
+
+/** Re-applies the query to every line, keeping the current match if it survives. */
+function refreshLogMatches(): void {
+  const previous = logMatchIndex >= 0 ? logMatches[logMatchIndex] ?? null : null;
+  logMatches = logEntries.filter((entry) => paintLogLine(entry)).map((entry) => entry.el);
+  logMatchIndex = previous ? logMatches.indexOf(previous) : -1;
+  logMatches[logMatchIndex]?.classList.add('current');
+  renderLogCount();
+}
+
+function renderLogCount(): void {
+  logMatchesEl.classList.toggle('none', logQuery !== '' && logMatches.length === 0);
+  if (!logQuery) {
+    logMatchesEl.textContent = logEntries.length > 0 ? `${logEntries.length} lines` : '';
+    return;
+  }
+  if (logMatches.length === 0) {
+    logMatchesEl.textContent = 'no matches';
+    return;
+  }
+  const at = logMatchIndex >= 0 ? `${logMatchIndex + 1}/` : '';
+  logMatchesEl.textContent = `${at}${logMatches.length} of ${logEntries.length}`;
+}
+
+/** Jumps to the next (delta 1) or previous (delta -1) matching line. */
+function stepLogMatch(delta: number): void {
+  if (logMatches.length === 0) return;
+  logMatches[logMatchIndex]?.classList.remove('current');
+  const n = logMatches.length;
+  logMatchIndex = logMatchIndex < 0 ? (delta > 0 ? 0 : n - 1) : (logMatchIndex + delta + n) % n;
+  const el = logMatches[logMatchIndex];
+  if (!el) return;
+  el.classList.add('current');
+  el.scrollIntoView({ block: 'center' });
+  renderLogCount();
+}
+
+function appendLog(level: LogLevel, text: string): void {
+  const el = document.createElement('span');
+  el.className = `line ${level}`;
+  const entry: LogEntry = { text, el };
+  logEntries.push(entry);
+  logEl.appendChild(el);
+  if (logQuery) {
+    // A new match shifts the indices after it, so recount rather than guess.
+    refreshLogMatches();
+  } else {
+    paintLogLine(entry);
+    renderLogCount();
+  }
+  if (logPinned) logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog(): void {
+  logEntries.length = 0;
+  logMatches = [];
+  logMatchIndex = -1;
+  logEl.textContent = '';
+  logPinned = true;
+  renderLogCount();
+}
+
+function setLogQuery(query: string): void {
+  logQuery = query;
+  logMatchIndex = -1;
+  logMatches = [];
+  refreshLogMatches();
+  if (logMatches.length > 0) stepLogMatch(1);
+}
+
+function initLogPane(): void {
+  logEl.addEventListener('scroll', () => {
+    // 24px of slack, so a part-scrolled last line still counts as "at bottom".
+    logPinned = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 24;
+  });
+  logSearchEl.addEventListener('input', () => setLogQuery(logSearchEl.value));
+  logSearchEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      stepLogMatch(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape' && logSearchEl.value !== '') {
+      e.preventDefault();
+      logSearchEl.value = '';
+      setLogQuery('');
+    }
+  });
+  $<HTMLButtonElement>('log-prev').addEventListener('click', () => stepLogMatch(-1));
+  $<HTMLButtonElement>('log-next').addEventListener('click', () => stepLogMatch(1));
+  $<HTMLButtonElement>('log-clear').addEventListener('click', clearLog);
+  // Ctrl+F anywhere in the window focuses the log search. Binding capture runs
+  // on capture-phase listeners that stop propagation while armed, so this can
+  // never steal a key that is being bound to a mark.
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      logSearchEl.focus();
+      logSearchEl.select();
+    }
+  });
+  renderLogCount();
+}
+
 function log(level: 'info' | 'warn' | 'error', message: string): void {
-  const line = document.createElement('span');
-  line.className = level;
-  line.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n`;
-  logEl.appendChild(line);
-  logEl.scrollTop = logEl.scrollHeight;
+  appendLog(level, `[${new Date().toLocaleTimeString()}] ${message}\n`);
 }
 
 function fillConfigForm(): void {
@@ -430,7 +583,16 @@ function renderSessions(entries: SessionListEntry[]): void {
       run.title = entry.recordingExists ? '' : 'The OBS recording named in the sidecar is missing.';
       run.addEventListener('click', () => void runPipeline(entry));
     }
-    actions.append(openReport, openFolder, run);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'danger';
+    del.textContent = 'Delete';
+    del.disabled = running;
+    del.title = running
+      ? 'Cancel the running pipeline first.'
+      : 'Move this session folder to the Recycle Bin (asks first).';
+    del.addEventListener('click', () => void deleteSession(entry));
+    actions.append(openReport, openFolder, run, del);
     row.append(title, meta, actions);
     sessionsEl.appendChild(row);
   }
@@ -442,6 +604,18 @@ function reportIpcError(result: { ok: boolean; error?: string }): void {
 
 async function openSessionReport(entry: SessionListEntry): Promise<void> {
   reportIpcError(await api.openSessionReport(entry.sessionDir));
+}
+
+/** Main shows the confirm dialog; the folder goes to the Recycle Bin, not away. */
+async function deleteSession(entry: SessionListEntry): Promise<void> {
+  const result = await api.deleteSession(entry.sessionDir);
+  if (result.error) log(result.deleted ? 'warn' : 'error', `Delete: ${result.error}`);
+  if (!result.deleted) return; // dialog dismissed, or the error above
+  log(
+    'info',
+    `Moved "${entry.title}" to the Recycle Bin${result.recordingDeleted ? ' (with its recording)' : ''}.`,
+  );
+  await loadSessions();
 }
 
 async function runPipeline(entry: SessionListEntry): Promise<void> {
@@ -459,11 +633,7 @@ async function loadSessions(): Promise<void> {
 }
 
 function logPipeline(line: string): void {
-  const span = document.createElement('span');
-  span.className = 'pipeline';
-  span.textContent = `  ${line}\n`;
-  logEl.appendChild(span);
-  logEl.scrollTop = logEl.scrollHeight;
+  appendLog('pipeline', `  ${line}\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -773,6 +943,7 @@ async function autoDetectObs(): Promise<void> {
 
 async function init(): Promise<void> {
   initBindingCapture();
+  initLogPane();
   initWizard();
   config = await api.getConfig();
   fillConfigForm();

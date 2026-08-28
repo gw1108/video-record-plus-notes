@@ -63,15 +63,20 @@ note() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
 warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; }
 
 # open_url URL opens it in the human's browser, cross-platform incl. WSL.
+# Windows goes through PowerShell's Start-Process, not explorer.exe: explorer
+# only hands a URL to the shell when it cannot read it as a path (otherwise it
+# just opens a folder window), and it exits 1 either way, so its status can
+# never tell success from failure.
 open_url() {
-  local url="$1"
+  local url="$1" ok=1
   printf '  %s↗ opening%s %s\n' "$GREEN" "$RESET" "$url"
-  { if   command -v wslview     >/dev/null 2>&1; then wslview "$url"
-    elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe "$url"
-    elif command -v xdg-open    >/dev/null 2>&1; then xdg-open "$url"
-    elif command -v open        >/dev/null 2>&1; then open "$url"
-    else warn "couldn't open a browser; visit it manually: $url"; fi
-  } >/dev/null 2>&1 || warn "couldn't open a browser, so visit it manually: $url"
+  if   command -v wslview        >/dev/null 2>&1; then wslview "$url"  >/dev/null 2>&1 && ok=0 || true
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    URL="$url" WSLENV=URL powershell.exe -NoProfile -NonInteractive -Command 'Start-Process $env:URL' >/dev/null 2>&1 && ok=0 || true
+  elif command -v xdg-open       >/dev/null 2>&1; then xdg-open "$url" >/dev/null 2>&1 && ok=0 || true
+  elif command -v open           >/dev/null 2>&1; then open "$url"     >/dev/null 2>&1 && ok=0 || true
+  fi
+  [[ "$ok" -eq 0 ]] || warn "couldn't open a browser, so visit it manually: $url"
 }
 
 # pause "msg" waits for the human to confirm they've done the manual part.
@@ -344,9 +349,14 @@ prepare_wheel() {
   done
 }
 
+run_id_has_outcome() {
+  compgen -G "$REPO_DIR/verification/evidence/m5/${1}-windows-sandbox*.md" >/dev/null
+}
+
 new_run_id() {
-  local candidate; candidate="$(date -u +%Y%m%dT%H%M%SZ)"
-  while [[ -e "$TRANSFER_BASE/$candidate" ]]; do candidate="${candidate}-retry"; done
+  local candidate
+  candidate="$(date -u +%Y%m%dT%H%M%SZ)"
+  while [[ -e "$TRANSFER_BASE/$candidate" || -L "$TRANSFER_BASE/$candidate" ]] || run_id_has_outcome "$candidate"; do candidate="${candidate}-retry"; done
   printf '%s' "$candidate"
 }
 
@@ -355,17 +365,102 @@ manifest_matches_run() {
   M5_MANIFEST="$(to_win "$manifest")" M5_RUN_ID="$run_id" M5_INSTALLER_HASH="$installer_hash" M5_WHEEL_HASH="$wheel_hash" M5_HELPER_HASH="$helper_hash" M5_WIZARD_HELPER_HASH="$wizard_helper_hash" M5_FFMPEG_HASH="$ffmpeg_hash" M5_FFPROBE_HASH="$ffprobe_hash" powershell.exe -NoProfile -Command 'try{$m=Get-Content -LiteralPath $env:M5_MANIFEST -Raw|ConvertFrom-Json;if($m.schema -ne "m5-sandbox-kit-v2" -or $m.runId -ne $env:M5_RUN_ID -or $m.installer.sha256 -ne $env:M5_INSTALLER_HASH -or $m.wheel.sha256 -ne $env:M5_WHEEL_HASH -or $m.captureHelper.sha256 -ne $env:M5_HELPER_HASH -or $m.sandboxHelper.sha256 -ne $env:M5_WIZARD_HELPER_HASH -or $m.wheel.bundledFfmpegSha256 -ne $env:M5_FFMPEG_HASH -or $m.wheel.bundledFfprobeSha256 -ne $env:M5_FFPROBE_HASH){exit 1}}catch{exit 1}' >/dev/null
 }
 
+valid_wizard_run_id() {
+  local run_id="$1" year month day hour minute second max_day
+  [[ "$run_id" =~ ^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z(-retry)*$ ]] || return 1
+  year=$((10#${BASH_REMATCH[1]})); month=$((10#${BASH_REMATCH[2]})); day=$((10#${BASH_REMATCH[3]}))
+  hour=$((10#${BASH_REMATCH[4]})); minute=$((10#${BASH_REMATCH[5]})); second=$((10#${BASH_REMATCH[6]}))
+  (( year >= 1 && month >= 1 && month <= 12 && hour <= 23 && minute <= 59 && second <= 59 )) || return 1
+  case "$month" in
+    2) max_day=28; if (( year % 400 == 0 || ( year % 4 == 0 && year % 100 != 0 ) )); then max_day=29; fi ;;
+    4|6|9|11) max_day=30 ;;
+    *) max_day=31 ;;
+  esac
+  (( day >= 1 && day <= max_day ))
+}
+
+path_is_reparse() {
+  local path="$1"
+  [[ -L "$path" ]] && return 0
+  [[ -e "$path" ]] || return 1
+  if command -v cygpath >/dev/null 2>&1 && command -v powershell.exe >/dev/null 2>&1; then
+    M5_LAYOUT_PATH="$(to_win "$path")" powershell.exe -NoProfile -Command 'try{$item=Get-Item -LiteralPath $env:M5_LAYOUT_PATH -Force -ErrorAction Stop;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){exit 0};exit 1}catch{exit 0}' >/dev/null 2>&1
+    return
+  fi
+  return 1
+}
+
+safe_tree_layout() {
+  local root="$1"
+  [[ ! -L "$root" ]] || return 1
+  [[ -e "$root" ]] || return 0
+  if command -v cygpath >/dev/null 2>&1 && command -v powershell.exe >/dev/null 2>&1; then
+    M5_LAYOUT_ROOT="$(to_win "$root")" powershell.exe -NoProfile -Command 'try{$root=Get-Item -LiteralPath $env:M5_LAYOUT_ROOT -Force -ErrorAction Stop;$pending=New-Object Collections.Stack;$pending.Push($root);while($pending.Count){$item=$pending.Pop();if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){exit 1};if($item.PSIsContainer){foreach($child in @(Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction Stop)){$pending.Push($child)}}};exit 0}catch{exit 1}' >/dev/null 2>&1 || return 1
+  fi
+  if find "$root" -type l -print -quit 2>/dev/null | grep -q .; then return 1; fi
+}
+
+safe_run_layout() {
+  local run_root="$1" path
+  [[ ! -L "$run_root" && ( ! -e "$run_root" || -d "$run_root" ) ]] || return 1
+  for path in "$run_root/kit" "$run_root/outbox" "$run_root/host-evidence"; do
+    [[ ! -L "$path" && ( ! -e "$path" || -d "$path" ) ]] || return 1
+  done
+  safe_tree_layout "$run_root"
+}
+
+write_current_run() {
+  local run_id="$1" temporary
+  if path_is_reparse "$CURRENT_RUN_FILE"; then rm -f -- "$CURRENT_RUN_FILE" || return 1; fi
+  [[ ! -e "$CURRENT_RUN_FILE" || -f "$CURRENT_RUN_FILE" ]] || return 1
+  temporary="$(mktemp "$TRANSFER_BASE/.current-run.XXXXXX")"
+  printf '%s\n' "$run_id" > "$temporary"
+  mv -f -- "$temporary" "$CURRENT_RUN_FILE"
+}
+
+quarantine_unbound_evidence() {
+  local run_root="$1" quarantine item suffix=1
+  local items=() markers=()
+  quarantine="$run_root/unbound-pre-manifest-evidence"
+  if [[ -d "$run_root/outbox" ]] && find "$run_root/outbox" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then items+=("$run_root/outbox"); elif [[ -e "$run_root/outbox" || -L "$run_root/outbox" ]] && [[ ! -d "$run_root/outbox" ]]; then items+=("$run_root/outbox"); fi
+  if [[ -d "$run_root/host-evidence" ]] && find "$run_root/host-evidence" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then items+=("$run_root/host-evidence"); elif [[ -e "$run_root/host-evidence" || -L "$run_root/host-evidence" ]] && [[ ! -d "$run_root/host-evidence" ]]; then items+=("$run_root/host-evidence"); fi
+  for item in "$run_root/wizard-state.env" "$run_root/Launch-M5-Windows-Sandbox.wsb"; do [[ -e "$item" || -L "$item" ]] && items+=("$item"); done
+  shopt -s nullglob
+  markers=("$run_root"/*.marker)
+  shopt -u nullglob
+  items+=("${markers[@]}")
+  (( ${#items[@]} )) || return 0
+  while [[ -e "$quarantine" || -L "$quarantine" ]]; do quarantine="$run_root/unbound-pre-manifest-evidence-$suffix"; suffix=$((suffix + 1)); done
+  mkdir -p "$quarantine"
+  for item in "${items[@]}"; do mv -- "$item" "$quarantine/"; done
+  say "Moved unbound pre-manifest state/evidence aside; it cannot satisfy this resumed run: $(to_win "$quarantine")"
+}
+
 choose_run() {
-  local installer_hash="$1" wheel_hash="$2" helper_hash="$3" wizard_helper_hash="$4" ffmpeg_hash="$5" ffprobe_hash="$6" candidate="" manifest=""
-  mkdir -p "$TRANSFER_BASE"
-  [[ -f "$CURRENT_RUN_FILE" ]] && candidate="$(tr -d '\r\n' < "$CURRENT_RUN_FILE")"
-  manifest="$TRANSFER_BASE/$candidate/kit/kit-manifest.json"
-  if [[ -n "$candidate" && -f "$manifest" ]] && ! compgen -G "$REPO_DIR/verification/evidence/m5/${candidate}-windows-sandbox*.md" >/dev/null && manifest_matches_run "$manifest" "$candidate" "$installer_hash" "$wheel_hash" "$helper_hash" "$wizard_helper_hash" "$ffmpeg_hash" "$ffprobe_hash"; then
+  local installer_hash="$1" wheel_hash="$2" helper_hash="$3" wizard_helper_hash="$4" ffmpeg_hash="$5" ffprobe_hash="$6" candidate="" manifest="" candidate_root="" resume_kind=""
+  if [[ -e "$TRANSFER_BASE" || -L "$TRANSFER_BASE" ]]; then
+    [[ -d "$TRANSFER_BASE" ]] && ! path_is_reparse "$TRANSFER_BASE" || { warn "The mapped-transfer root is not a safe local directory; refusing to write through it."; return 1; }
+  else
+    mkdir -p "$TRANSFER_BASE"
+  fi
+  if [[ -f "$CURRENT_RUN_FILE" ]] && ! path_is_reparse "$CURRENT_RUN_FILE"; then candidate="$(< "$CURRENT_RUN_FILE")"; candidate="${candidate%$'\r'}"; fi
+  if valid_wizard_run_id "$candidate"; then
+    candidate_root="$TRANSFER_BASE/$candidate"
+    manifest="$candidate_root/kit/kit-manifest.json"
+    if safe_run_layout "$candidate_root" && ! run_id_has_outcome "$candidate"; then
+      if [[ -e "$manifest" || -L "$manifest" ]]; then
+        if [[ -f "$manifest" && ! -L "$manifest" ]] && manifest_matches_run "$manifest" "$candidate" "$installer_hash" "$wheel_hash" "$helper_hash" "$wizard_helper_hash" "$ffmpeg_hash" "$ffprobe_hash"; then resume_kind=manifested; fi
+      else
+        resume_kind=pre-manifest
+      fi
+    fi
+  fi
+  if [[ -n "$resume_kind" ]]; then
     RUN_ID="$candidate"
-    say "Resuming current incomplete run $RUN_ID; only host-accepted evidence for this identity can be reused."
+    say "Resuming current incomplete run $RUN_ID; only evidence strictly bound to the prepared manifest can be reused."
   else
     RUN_ID="$(new_run_id)"
-    printf '%s\n' "$RUN_ID" > "$CURRENT_RUN_FILE"
+    write_current_run "$RUN_ID"
     say "Starting mapped run $RUN_ID. Prior runs, answers, and evidence are not overwritten or accepted."
   fi
   RUN_ROOT="$TRANSFER_BASE/$RUN_ID"
@@ -374,17 +469,22 @@ choose_run() {
   HOST_EVIDENCE="$RUN_ROOT/host-evidence"
   STATE_FILE="$RUN_ROOT/wizard-state.env"
   WSB="$RUN_ROOT/Launch-M5-Windows-Sandbox.wsb"
+  if [[ "$resume_kind" == pre-manifest ]]; then quarantine_unbound_evidence "$RUN_ROOT"; fi
   mkdir -p "$KIT" "$OUTBOX" "$HOST_EVIDENCE"
   ENV_FILE="$STATE_FILE"
 }
 
 write_lines() {
-  local path="$1"; shift
-  printf '%s\n' "$@" > "$path"
+  local path="$1" partial; shift
+  partial="${path}.part"
+  rm -f -- "$partial"
+  printf '%s\n' "$@" > "$partial"
+  mv -f -- "$partial" "$path"
 }
 
 copy_verified() {
-  local source="$1" destination="$2" expected_hash="$3" partial="${destination}.part"
+  local source="$1" destination="$2" expected_hash="$3" partial
+  partial="${destination}.part"
   if [[ -f "$destination" && "$(sha256_file "$destination")" == "$expected_hash" ]]; then return; fi
   rm -f "$partial"
   cp "$source" "$partial"
@@ -394,6 +494,7 @@ copy_verified() {
 
 prepare_transfer_kit() {
   local installer_hash="$1" wheel_hash="$2" helper_hash="$3" wizard_helper_hash="$4" ffmpeg_hash="$5" ffprobe_hash="$6"
+  safe_run_layout "$RUN_ROOT" || { warn "The selected run contains a symbolic link or Windows reparse point; refusing every kit, outbox, evidence, launcher, and state write."; return 1; }
   until copy_verified "$INSTALLER" "$KIT/Playtest Recorder Setup 0.1.0.exe" "$installer_hash"; do pause "Press Enter to retry the verified installer copy."; done
   until copy_verified "$WHEEL" "$KIT/playtest_pipeline-0.1.0-py3-none-win_amd64.whl" "$wheel_hash"; do pause "Press Enter to retry the verified wheel copy."; done
   until copy_verified "$SANDBOX_HELPER_SOURCE" "$KIT/m5-sandbox-checks.ps1" "$wizard_helper_hash"; do pause "Press Enter to retry the verified Sandbox helper copy."; done
@@ -407,6 +508,7 @@ prepare_transfer_kit() {
   write_lines "$KIT/03-pipeline-tools-check.cmd" '@echo off' 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\M5Kit\m5-sandbox-checks.ps1" -Action PipelineTools -KitDirectory "C:\M5Kit" -OutboxDirectory "C:\M5Outbox"' 'pause'
   write_lines "$KIT/04-collect-live-evidence.cmd" '@echo off' 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\M5Kit\m5-sandbox-checks.ps1" -Action Collect -KitDirectory "C:\M5Kit" -OutboxDirectory "C:\M5Outbox"' 'pause'
   M5_MANIFEST="$(to_win "$KIT/kit-manifest.json")" M5_INSTALLER="$(to_win "$KIT/Playtest Recorder Setup 0.1.0.exe")" M5_WHEEL="$(to_win "$KIT/playtest_pipeline-0.1.0-py3-none-win_amd64.whl")" M5_RUN_ID="$RUN_ID" M5_INSTALLER_HASH="$installer_hash" M5_WHEEL_HASH="$wheel_hash" M5_HELPER_HASH="$helper_hash" M5_WIZARD_HELPER_HASH="$wizard_helper_hash" M5_FFMPEG_HASH="$ffmpeg_hash" M5_FFPROBE_HASH="$ffprobe_hash" powershell.exe -NoProfile -Command '$installer=Get-Item -LiteralPath $env:M5_INSTALLER;$wheel=Get-Item -LiteralPath $env:M5_WHEEL;$signature=Get-AuthenticodeSignature -LiteralPath $env:M5_INSTALLER;$createdAt=(Get-Date).ToUniversalTime().ToString("o");if(Test-Path -LiteralPath $env:M5_MANIFEST){try{$old=Get-Content -LiteralPath $env:M5_MANIFEST -Raw|ConvertFrom-Json;if($old.schema -eq "m5-sandbox-kit-v2" -and $old.runId -eq $env:M5_RUN_ID -and $old.createdAtUtc){$createdAt=[string]$old.createdAtUtc}}catch{}};$manifest=[ordered]@{schema="m5-sandbox-kit-v2";runId=$env:M5_RUN_ID;createdAtUtc=$createdAt;installer=[ordered]@{name=$installer.Name;version=$installer.VersionInfo.ProductVersion;bytes=$installer.Length;sha256=$env:M5_INSTALLER_HASH;signatureStatus=[string]$signature.Status;motwZoneId=3};wheel=[ordered]@{name=$wheel.Name;bytes=$wheel.Length;sha256=$env:M5_WHEEL_HASH;bundledFfmpegSha256=$env:M5_FFMPEG_HASH;bundledFfprobeSha256=$env:M5_FFPROBE_HASH};captureHelper=[ordered]@{sha256=$env:M5_HELPER_HASH};sandboxHelper=[ordered]@{name="m5-sandbox-checks.ps1";sha256=$env:M5_WIZARD_HELPER_HASH};ffmpegBoundary="Selected wheel-bundled ffmpeg/ffprobe, invoked as separate processes; no external FFmpeg install."};$tmp="$env:M5_MANIFEST.part";$manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $tmp -Encoding utf8;Move-Item -LiteralPath $tmp -Destination $env:M5_MANIFEST -Force'
+  manifest_matches_run "$KIT/kit-manifest.json" "$RUN_ID" "$installer_hash" "$wheel_hash" "$helper_hash" "$wizard_helper_hash" "$ffmpeg_hash" "$ffprobe_hash" || { warn "The prepared kit manifest does not exactly match the selected run and artifact identities; refusing the kit."; return 1; }
   M5_KIT="$(to_win "$KIT")" M5_OUTBOX="$(to_win "$OUTBOX")" M5_WSB="$(to_win "$WSB")" powershell.exe -NoProfile -Command '$kit=[Security.SecurityElement]::Escape($env:M5_KIT);$outbox=[Security.SecurityElement]::Escape($env:M5_OUTBOX);$xml="<Configuration>`r`n  <MappedFolders>`r`n    <MappedFolder>`r`n      <HostFolder>$kit</HostFolder>`r`n      <SandboxFolder>C:\M5Kit</SandboxFolder>`r`n      <ReadOnly>true</ReadOnly>`r`n    </MappedFolder>`r`n    <MappedFolder>`r`n      <HostFolder>$outbox</HostFolder>`r`n      <SandboxFolder>C:\M5Outbox</SandboxFolder>`r`n      <ReadOnly>false</ReadOnly>`r`n    </MappedFolder>`r`n  </MappedFolders>`r`n  <Networking>Enable</Networking>`r`n  <AudioInput>Enable</AudioInput>`r`n  <ClipboardRedirection>Enable</ClipboardRedirection>`r`n</Configuration>`r`n";[IO.File]::WriteAllText($env:M5_WSB,$xml,[Text.UTF8Encoding]::new($false))'
   MANIFEST_HASH="$(sha256_file "$KIT/kit-manifest.json")"
 }
@@ -502,13 +604,16 @@ host_helper() {
 }
 
 validate_guest_evidence() {
-  local kind="$1" marker="${2:-}" args=(-EvidenceKind "$kind")
+  local kind marker
+  local -a args
+  kind="$1"; marker="${2:-}"; args=(-EvidenceKind "$kind")
   [[ -n "$marker" ]] && args+=(-AttemptMarkerPath "$(to_win "$marker")")
   host_helper ValidateGuestEvidence "${args[@]}"
 }
 
 require_screenshot() {
-  local kind="$1" view="$2" result_key="$3" reply="" marker="$RUN_ROOT/screenshot-$kind-attempt.marker" exact_name="$RUN_ID-$kind.png"
+  local kind="$1" view="$2" result_key="$3" reply="" marker exact_name
+  marker="$RUN_ROOT/screenshot-$kind-attempt.marker"; exact_name="$RUN_ID-$kind.png"
   if host_helper ValidateScreenshot -ScreenshotKind "$kind" >/dev/null 2>&1; then say "${GREEN}✓${RESET} reusing host-decoded, hash-bound current-run PNG for $kind."; write_env "$result_key" yes; return; fi
   while :; do
     rm -f "$marker"; touch "$marker"
@@ -534,7 +639,8 @@ require_screenshot() {
 }
 
 require_passing_json() {
-  local kind="$1" command_file="$2" purpose="$3" result_key="$4" reply="" marker="$RUN_ROOT/$kind-attempt.marker"
+  local kind="$1" command_file="$2" purpose="$3" result_key="$4" reply="" marker
+  marker="$RUN_ROOT/$kind-attempt.marker"
   if validate_guest_evidence "$kind" >/dev/null 2>&1; then say "${GREEN}✓${RESET} reusing trusted-host-accepted current-run $purpose evidence."; write_env "$result_key" yes; return; fi
   while :; do
     rm -f "$marker"; touch "$marker"
@@ -565,10 +671,12 @@ state_answer() {
 }
 
 write_outcome() {
-  local status="$1" outcome="$REPO_DIR/verification/evidence/m5/${RUN_ID}-windows-sandbox.md" suffix=1 limitations escaped
-  while [[ -e "$outcome" ]]; do outcome="$REPO_DIR/verification/evidence/m5/${RUN_ID}-windows-sandbox-retry-${suffix}.md"; suffix=$((suffix + 1)); done
+  local status="$1" outcome="$REPO_DIR/verification/evidence/m5/${RUN_ID}-windows-sandbox.md" suffix=1 limitations escaped partial
+  while [[ -e "$outcome" || -L "$outcome" ]]; do outcome="$REPO_DIR/verification/evidence/m5/${RUN_ID}-windows-sandbox-retry-${suffix}.md"; suffix=$((suffix + 1)); done
   limitations="$(state_answer LIMITATIONS)"; escaped="${limitations//|/\\|}"
-  cat > "$outcome" <<EOF
+  partial="${outcome}.part"
+  rm -f -- "$partial"
+  cat > "$partial" <<EOF
 # M5 Windows Sandbox release exit — $RUN_ID
 
 Status: **$status**
@@ -628,6 +736,7 @@ $escaped
 
 Synthetic fixture note: m5-missing-pipeline-fixture was used only to trigger the expected command-resolution failure before Python installation. It is not the live release evidence and did not contribute to PASS.
 EOF
+  mv -f -- "$partial" "$outcome"
   printf '%s' "$outcome"
 }
 
@@ -646,7 +755,7 @@ SANDBOX_HELPER_HASH="$(sha256_file "$SANDBOX_HELPER_SOURCE")"
 WHEEL_FFMPEG_HASH="$(wheel_entry_sha256 'playtest_pipeline/bin/ffmpeg.exe')"
 WHEEL_FFPROBE_HASH="$(wheel_entry_sha256 'playtest_pipeline/bin/ffprobe.exe')"
 choose_run "$INSTALLER_HASH" "$WHEEL_HASH" "$CAPTURE_HELPER_HASH" "$SANDBOX_HELPER_HASH" "$WHEEL_FFMPEG_HASH" "$WHEEL_FFPROBE_HASH"
-prepare_transfer_kit "$INSTALLER_HASH" "$WHEEL_HASH" "$CAPTURE_HELPER_HASH" "$SANDBOX_HELPER_HASH" "$WHEEL_FFMPEG_HASH" "$WHEEL_FFPROBE_HASH"
+until prepare_transfer_kit "$INSTALLER_HASH" "$WHEEL_HASH" "$CAPTURE_HELPER_HASH" "$SANDBOX_HELPER_HASH" "$WHEEL_FFMPEG_HASH" "$WHEEL_FFPROBE_HASH"; do pause "Kit preparation did not verify. Press Enter to repair and retry the same run identity."; done
 INSTALLER_SIGNATURE="$(M5_INSTALLER_PATH="$(to_win "$INSTALLER")" powershell.exe -NoProfile -Command '(Get-AuthenticodeSignature -LiteralPath $env:M5_INSTALLER_PATH).Status' | tr -d '\r')"
 say "Installer SHA-256: $INSTALLER_HASH"
 say "Wheel SHA-256: $WHEEL_HASH"

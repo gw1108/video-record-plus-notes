@@ -63,15 +63,20 @@ note() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
 warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; }
 
 # open_url URL opens it in the human's browser, cross-platform incl. WSL.
+# Windows goes through PowerShell's Start-Process, not explorer.exe: explorer
+# only hands a URL to the shell when it cannot read it as a path (otherwise it
+# just opens a folder window), and it exits 1 either way, so its status can
+# never tell success from failure.
 open_url() {
-  local url="$1"
+  local url="$1" ok=1
   printf '  %s↗ opening%s %s\n' "$GREEN" "$RESET" "$url"
-  { if   command -v wslview     >/dev/null 2>&1; then wslview "$url"
-    elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe "$url"
-    elif command -v xdg-open    >/dev/null 2>&1; then xdg-open "$url"
-    elif command -v open        >/dev/null 2>&1; then open "$url"
-    else warn "couldn't open a browser; visit it manually: $url"; fi
-  } >/dev/null 2>&1 || warn "couldn't open a browser, so visit it manually: $url"
+  if   command -v wslview        >/dev/null 2>&1; then wslview "$url"  >/dev/null 2>&1 && ok=0 || true
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    URL="$url" WSLENV=URL powershell.exe -NoProfile -NonInteractive -Command 'Start-Process $env:URL' >/dev/null 2>&1 && ok=0 || true
+  elif command -v xdg-open       >/dev/null 2>&1; then xdg-open "$url" >/dev/null 2>&1 && ok=0 || true
+  elif command -v open           >/dev/null 2>&1; then open "$url"     >/dev/null 2>&1 && ok=0 || true
+  fi
+  [[ "$ok" -eq 0 ]] || warn "couldn't open a browser, so visit it manually: $url"
 }
 
 # pause "msg" waits for the human to confirm they've done the manual part.

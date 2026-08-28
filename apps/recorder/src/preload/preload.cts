@@ -27,6 +27,7 @@ const api: PlaytestApi = {
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   openSessionReport: (sessionDir: string) => ipcRenderer.invoke('sessions:open-report', sessionDir),
   openSessionFolder: (sessionDir: string) => ipcRenderer.invoke('sessions:open-folder', sessionDir),
+  deleteSession: (sessionDir: string) => ipcRenderer.invoke('sessions:delete', sessionDir),
   runPipeline: (sessionDir: string) => ipcRenderer.invoke('pipeline:run', sessionDir),
   cancelPipeline: () => ipcRenderer.invoke('pipeline:cancel'),
   rigAdvisories: () => ipcRenderer.invoke('rig:advisories'),

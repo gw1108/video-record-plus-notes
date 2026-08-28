@@ -6,12 +6,14 @@
  * idle. Starting a session CLOSES every BrowserWindow — the live hot path
  * (hotkey → anchor → sidecar) runs renderer-free with just the tray icon.
  */
-import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
+import type { MessageBoxOptions } from 'electron';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatTimecode } from '@playtest/shared';
 import type {
+  DeleteSessionResult,
   ObsAutoDetectResult,
   ObsConnectResult,
   RecorderConfig,
@@ -191,6 +193,68 @@ function startPipeline(sessionDir: string): { ok: boolean; error?: string } {
   }
 }
 
+/**
+ * Move one session directory to the Recycle Bin, after a native confirm
+ * dialog. Nothing is erased: `shell.trashItem` is the OS bin, so a mis-click
+ * is recoverable from Explorer. The OBS recording lives outside the session
+ * dir (in OBS's record folder) and is only taken along when the dialog's
+ * checkbox is ticked.
+ */
+async function deleteSession(sessionDir: string): Promise<DeleteSessionResult> {
+  const entry = entryFor(sessionDir);
+  if (!entry) return { ok: false, deleted: false, error: `No session sidecar in ${sessionDir}.` };
+  if (controller.recording) return { ok: false, deleted: false, error: 'Cannot delete a session while recording.' };
+  if (pipeline.running === sessionDir) {
+    return { ok: false, deleted: false, error: 'The pipeline is running for this session — cancel it first.' };
+  }
+
+  const recording = entry.recordingExists ? entry.recordingFile : undefined;
+  const options: MessageBoxOptions = {
+    type: 'warning',
+    buttons: ['Cancel', 'Move to Recycle Bin'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Delete session',
+    message: `Delete "${entry.title}"?`,
+    detail:
+      `${sessionDir}\n\n` +
+      'Are you sure you want to move the session folder, transcript and report to the Recycle Bin? ' +
+      'You can restore it from Explorer if this was a mistake.',
+  };
+  if (recording) {
+    options.checkboxLabel = `Also delete the OBS recording (${recording})`;
+    options.checkboxChecked = false;
+  }
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const { response, checkboxChecked } = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+  if (response !== 1) return { ok: true, deleted: false };
+
+  // Session dir first: if trashing the recording fails afterwards, the session
+  // is still gone from the list and the error names what stayed behind.
+  try {
+    await shell.trashItem(sessionDir);
+  } catch (err) {
+    return { ok: false, deleted: false, error: `Could not move ${sessionDir} to the Recycle Bin: ${String(err)}` };
+  }
+  if (recording && checkboxChecked) {
+    try {
+      await shell.trashItem(recording);
+    } catch (err) {
+      return {
+        ok: true,
+        deleted: true,
+        recordingDeleted: false,
+        error: `Session deleted, but ${recording} stayed on disk: ${String(err)}`,
+      };
+    }
+    return { ok: true, deleted: true, recordingDeleted: true };
+  }
+  return { ok: true, deleted: true, recordingDeleted: false };
+}
+
 /** The OBS password is write-only across IPC: never send it to the renderer. */
 function redactedConfig(): RecorderConfig {
   return {
@@ -330,7 +394,7 @@ function registerIpc(): void {
   ipcMain.handle('session:resume', () => handleResume());
   ipcMain.handle('session:status', () => controller.statusSnapshot());
 
-  // Session browser: read-only listing of sessionsDir + open/run actions.
+  // Session browser: listing of sessionsDir + open / run / delete actions.
   ipcMain.handle('sessions:list', () => listSessions(config.sessionsDir));
   ipcMain.handle('sessions:open-report', async (_e, sessionDir: string) => {
     if (!entryFor(sessionDir)) return { ok: false, error: 'Not a session directory.' };
@@ -344,6 +408,7 @@ function registerIpc(): void {
     const error = await shell.openPath(sessionDir);
     return error ? { ok: false, error } : { ok: true };
   });
+  ipcMain.handle('sessions:delete', (_e, sessionDir: string) => deleteSession(sessionDir));
   ipcMain.handle('pipeline:run', (_e, sessionDir: string) => startPipeline(sessionDir));
   ipcMain.handle('pipeline:cancel', () => pipeline.cancel());
 

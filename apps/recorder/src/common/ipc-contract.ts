@@ -164,6 +164,17 @@ export interface SessionListEntry {
   unfinished: boolean;
 }
 
+/** Outcome of `sessions:delete` (session folder → Recycle Bin). */
+export interface DeleteSessionResult {
+  ok: boolean;
+  /** False when the confirm dialog was dismissed — that is not an error. */
+  deleted: boolean;
+  /** True when the OBS recording named in the sidecar went to the bin too. */
+  recordingDeleted?: boolean;
+  /** Set on failure, and on a partial success (folder gone, recording kept). */
+  error?: string;
+}
+
 /** Where OBS is installed, for the first-run wizard. */
 export interface ObsInstallInfo {
   installed: boolean;
@@ -280,6 +291,11 @@ export interface PlaytestApi {
   listSessions(): Promise<SessionListEntry[]>;
   openSessionReport(sessionDir: string): Promise<{ ok: boolean; error?: string }>;
   openSessionFolder(sessionDir: string): Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Confirm (native modal, main process), then move the session directory to
+   * the Recycle Bin — optionally its OBS recording as well.
+   */
+  deleteSession(sessionDir: string): Promise<DeleteSessionResult>;
   /** Spawn `playtest-pipeline process <sessionDir>`; output streams as push events. */
   runPipeline(sessionDir: string): Promise<{ ok: boolean; error?: string }>;
   cancelPipeline(): Promise<void>;
@@ -307,6 +323,7 @@ export const IPC = {
   listSessions: 'sessions:list',
   openSessionReport: 'sessions:open-report',
   openSessionFolder: 'sessions:open-folder',
+  deleteSession: 'sessions:delete',
   runPipeline: 'pipeline:run',
   cancelPipeline: 'pipeline:cancel',
   rigAdvisories: 'rig:advisories',

@@ -167,16 +167,42 @@ code {
   100% { transform: translateX(433%); }
 }
 
+/* Log pane: a real window — fixed height, scrolls, user-resizable. */
+.log-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.log-head h2 { margin: 0; }
+.log-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.log-tools input { width: 200px; padding: 5px 8px; font-size: 12px; }
+.log-tools button { padding: 4px 10px; font-size: 12px; line-height: 1.2; }
+.log-matches { font-size: 11px; color: var(--muted); min-width: 74px; text-align: right; }
+.log-matches.none { color: var(--warn); }
+
 #log {
   margin: 0;
-  max-height: 140px;
-  overflow-y: auto;
+  height: 280px;
+  min-height: 100px;
+  resize: vertical;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
   font-size: 12px;
+  line-height: 1.55;
   color: var(--muted);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+#log:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+#log .line { display: block; }
+/* Beats the UA [hidden] rule, which a class selector would otherwise outrank. */
+#log .line[hidden] { display: none; }
 #log .warn { color: var(--warn); }
 #log .error { color: var(--fail); }
+#log .empty { color: var(--muted); opacity: 0.7; font-style: italic; }
+#log mark { background: rgba(240, 180, 41, 0.3); color: inherit; border-radius: 2px; }
+#log .line.current { background: rgba(79, 140, 255, 0.16); border-radius: 3px; }
+#log .line.current mark { background: var(--warn); color: #14161a; }
 
 input.narrow { min-width: 70px; width: 110px; }
 button.subtle { background: transparent; color: var(--muted); }
@@ -202,6 +228,8 @@ code.inline { display: inline; padding: 1px 5px; white-space: normal; }
 .session-row .actions { grid-row: 1 / span 2; display: flex; gap: 6px; }
 .session-row .actions button { padding: 5px 10px; font-size: 12px; }
 .session-row.running { border-color: var(--accent); }
+.session-row .actions button.danger { color: var(--fail); border-color: rgba(239, 83, 80, 0.45); }
+.session-row .actions button.danger:hover:not(:disabled) { background: rgba(239, 83, 80, 0.14); border-color: var(--fail); }
 .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; margin-left: 6px; background: #2a2f38; color: var(--muted); }
 .badge.report { background: rgba(62, 207, 142, 0.18); color: var(--pass); }
 .badge.missing { background: rgba(239, 83, 80, 0.18); color: var(--fail); }

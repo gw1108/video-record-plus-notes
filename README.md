@@ -179,3 +179,14 @@ the game's FPS at the monitor refresh rate.
   video track; a webcam is a user-added OBS source (tech-stack §3.6, decided
   2026-08-23).
 - **Never link libobs; drive OBS over obs-websocket only** — the process boundary is the GPL boundary (§3.2). FFmpeg: LGPL build for anything shipped (§6.2).
+
+## Appendix: published policy pages
+
+These are served by GitHub Pages from `docs/` on `main`, and are the URLs given to Google for the YouTube API OAuth consent screen:
+
+| Page | URL | Source |
+|---|---|---|
+| Privacy Policy | https://gw1108.github.io/video-record-plus-notes/privacy | `docs/privacy.html` (Markdown original: `docs/privacy.md`) |
+| Terms of Service | https://gw1108.github.io/video-record-plus-notes/terms-of-service | `docs/terms-of-service.html` |
+
+Both also resolve with an explicit `.html` suffix. Edit the HTML in `docs/` and push to `main` to republish — there is no build step.

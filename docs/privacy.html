@@ -21,11 +21,34 @@
 
 <p>Playtest Recorder is a desktop tool that records your own playtest sessions locally. It does not collect analytics and has no server of its own.</p>
 
-<h2>YouTube</h2>
-<p>When you choose to upload a session, Playtest Recorder uses the YouTube Data API to upload the video file you selected to <strong>your own</strong> YouTube channel, with the title and description you reviewed, as an <strong>unlisted</strong> video. It requests only the <code>youtube.upload</code> permission, reads no data from your channel, and stores nothing except the OAuth token on your own computer (<code>%APPDATA%\playtest-recorder</code>), which you can delete at any time. Use of YouTube is subject to the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a> and the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>. You can revoke the tool's access at <a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a>.</p>
+<h2>YouTube API Services</h2>
+<p>Playtest Recorder uses <strong>YouTube API Services</strong>. When you choose to upload a session, it uses the YouTube Data API v3 to upload the video file you selected to <strong>your own</strong> YouTube channel, with the title and description you reviewed, as an <strong>unlisted</strong> video. It requests only the <code>youtube.upload</code> permission and reads no data from your channel.</p>
+<p>By using this application you are agreeing to be bound by the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>. Google's handling of any data it receives is described in the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</p>
+
+<h2>What is stored, and where</h2>
+<p>Everything Playtest Recorder keeps stays on your own computer. There is no server, no account, and no transmission of your data to the developer.</p>
+<ul>
+  <li><strong>OAuth token.</strong> After you sign in with Google, the access and refresh tokens are cached at <code>%APPDATA%\playtest-recorder\youtube-token.json</code> so you are not asked to sign in on every upload. Tokens are stored only on your machine and are never sent anywhere except to Google.</li>
+  <li><strong>OAuth client credentials.</strong> Stored alongside it at <code>%APPDATA%\playtest-recorder\youtube-client.json</code>.</li>
+  <li><strong>Recordings, notes and reports.</strong> Written to the session folder you chose on your own disk.</li>
+</ul>
+<p>No YouTube user data is collected, stored, shared, sold, or used for advertising, analytics, or model training. Nothing is shared with any third party.</p>
+
+<h2>Data retention and deletion</h2>
+<p>Stored tokens are kept until you delete them or they expire, and they are refreshed only while you keep using the tool. You can remove all stored data at any time, and there is nothing held elsewhere that needs a request to erase:</p>
+<ul>
+  <li><strong>Delete the stored tokens</strong> by deleting the folder <code>%APPDATA%\playtest-recorder</code>. The application holds no other copy.</li>
+  <li><strong>Revoke the application's access to your Google account</strong> at <a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a> (also reachable at <a href="https://security.google.com/settings/security/permissions">https://security.google.com/settings/security/permissions</a>). Revoking immediately invalidates any token held on your machine.</li>
+  <li><strong>Delete an uploaded video</strong> from <a href="https://studio.youtube.com">YouTube Studio</a>. Videos live on your own channel and are under your control, not the developer's.</li>
+  <li><strong>Delete recordings and reports</strong> by deleting the session folder on your disk.</li>
+</ul>
+<p>Because the developer never receives your data, there is no deletion request to make — but you may still contact us at the address below with any privacy question.</p>
 
 <h2>Notion</h2>
-<p>If you publish a report to Notion, the notes and video link you reviewed are sent to the Notion workspace you connected, using your own integration token.</p>
+<p>If you publish a report to Notion, the notes and video link you reviewed are sent to the Notion workspace you connected, using your own integration token. No YouTube user data beyond the video link you chose to publish is included.</p>
+
+<h2>Changes to this policy</h2>
+<p>Any change is published on this page with a new "Last updated" date.</p>
 
 <h2>Contact</h2>
 <p><a href="mailto:georgetw1108@gmail.com">georgetw1108@gmail.com</a></p>
