@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playtest Recorder</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; font: 16px/1.65 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  h1 { font-size: 2rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2.25rem; }
+  .tagline { color: #6b7280; font-size: 1.05rem; margin-top: 0; }
+  nav { margin: 1.25rem 0 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid #d1d5db; }
+  nav a { margin-right: 1.25rem; font-weight: 600; }
+  ul { padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.9em; }
+  .youtube { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: 1rem 0 0.5rem; }
+  .youtube img { width: 148px; height: auto; }
+  .youtube span { color: #6b7280; font-size: 0.95rem; }
+  footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid #d1d5db; font-size: 0.95rem; color: #6b7280; }
+  footer a { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Playtest Recorder</h1>
+<p class="tagline">Record a playtest, mark the moments that matter, publish the condensed result.</p>
+
+<nav>
+  <a href="privacy">Privacy Policy</a>
+  <a href="terms-of-service">Terms of Service</a>
+  <a href="https://github.com/gw1108/video-record-plus-notes">Source code</a>
+</nav>
+
+<p>Playtest Recorder is a free desktop application for Windows. It records your screen through OBS while you play, lets you mark interesting moments with a hotkey and dictate notes by voice, then produces a condensed video and transcript of just the marked segments — ready to share with your team.</p>
+
+<h2>How Playtest Recorder uses YouTube</h2>
+
+<div class="youtube">
+  <img src="assets/youtube-logo.svg" alt="YouTube">
+  <span>Playtest Recorder uses YouTube API Services.</span>
+</div>
+
+<p>Publishing a session to YouTube is entirely optional. When you choose it, the application asks you to sign in with your Google Account and uploads the recording you selected to <strong>your own</strong> YouTube channel as an <strong>unlisted</strong> video, with the title, description and chapter markers you reviewed first.</p>
+
+<ul>
+  <li>It requests one permission only: <code>youtube.upload</code>.</li>
+  <li>It reads nothing from your channel and stores no YouTube data.</li>
+  <li>Your OAuth token stays on your own computer and never reaches the developer, who operates no server.</li>
+  <li>You can revoke access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+</ul>
+
+<p>Full details of what is stored, how long it is kept and how to delete it are in the <a href="privacy">Privacy Policy</a>. Use of YouTube is subject to the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a> and the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</p>
+
+<h2>What else it does</h2>
+<ul>
+  <li>Records any screen, window or game capture target through OBS Studio.</li>
+  <li>Marks moments with a global hotkey while you keep playing.</li>
+  <li>Transcribes dictated notes locally, with timestamps tied to each mark.</li>
+  <li>Builds a report that plays only the marked segments, and can publish it to Notion.</li>
+</ul>
+
+<h2>Contact</h2>
+<p><a href="mailto:georgetw1108@gmail.com">georgetw1108@gmail.com</a></p>
+
+<footer>
+  <a href="privacy">Privacy Policy</a> · <a href="terms-of-service">Terms of Service</a> · <a href="https://github.com/gw1108/video-record-plus-notes">github.com/gw1108/video-record-plus-notes</a>
+  <p>YouTube and the YouTube logo are trademarks of Google LLC.</p>
+</footer>
+
+</body>
+</html>
