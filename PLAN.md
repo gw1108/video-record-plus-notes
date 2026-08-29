@@ -66,37 +66,16 @@ Paths used below (all exist today):
 
 ## M2 — API uploader (opt-in, gated on Google's audit — later)
 
-**Wizard:** `bash verification/wizards/wizard-m2.4-youtube-api.sh` covers the first two items
-(privacy page → Cloud project → API → consent screen → Desktop client JSON →
-audit form; ids to `.env`, client JSON to `%APPDATA%\playtest-recorder\`).
-The uploader CLI itself (item 3) is code, written after the audit passes.
+**Wizard done 2026-08-28:** `bash verification/wizards/wizard-m2.4-youtube-api.sh` (privacy page → Cloud project → API → consent screen → Desktop client JSON → audit form) ran to the end; ids are in `.env`, the client JSON is at `%APPDATA%\playtest-recorder\youtube-client.json`, and the compliance audit was submitted. Record: `verification/evidence/m2.4/wizard-m2.4-result.txt`.
 
-- [ ] **Compliance audit first** (George; free; weeks): the tool needs a
-      public https page with a privacy policy that has a YouTube-data
-      section (the repo's GitHub Pages is enough), then
-      <https://support.google.com/youtube/contact/yt_api_form>. Until it
-      passes, every API upload is locked private, so do **not** build the
-      uploader as the default path.
-- [ ] **Google Cloud setup** (≈10 min): project → enable *YouTube Data API
-      v3* → OAuth consent screen (External, *Testing*, add your Google
-      account as test user) → Credentials → OAuth client ID, type
-      **Desktop app**; download the JSON to
-      `%APPDATA%\playtest-recorder\youtube-client.json` (gitignored path).
-- [ ] **`playtest-youtube upload <reportDir>`** (`packages/youtube-uploader`,
-      or a `youtube` subcommand of the publisher): installed-app OAuth with
-      loopback redirect (`http://127.0.0.1:<port>`), scope
-      `https://www.googleapis.com/auth/youtube.upload`, tokens cached in
-      `%APPDATA%\playtest-recorder\youtube-token.json`; resumable upload
-      (`uploadType=resumable`, 8 MiB chunks = multiple of 256 KiB, resume on
-      308 via `Content-Range: bytes */total`); body: `snippet.title/description`
-      from the kit, `status: { privacyStatus: 'unlisted', embeddable: true,
-      selfDeclaredMadeForKids: false }`; prints the `youtu.be` URL and
-      writes it to `report/youtube/url.txt` so `playtest-notion publish`
-      can pick it up without `--youtube`. Expect weekly re-consent while
-      the consent screen is in *Testing*.
-- [ ] Recorder: *Publish* button in the Sessions card = upload (if
-      configured) → publish; otherwise open the kit folder + YouTube
-      Studio.
+- [ ] **Google's audit verdict** (submitted 2026-08-28; free; weeks): `youtube.videos.insert` only, 16,000 units/day asked, three generated documents attached (`verification/audit/out/`). Until the reply lands every API upload from the project is locked private whatever the request says, so the manual Studio upload stays the product path; on approval set `YOUTUBE_AUDIT_STATUS=passed <date>` in `.env` and both the CLI and the Publish dialog drop their warning.
+
+- [ ] **Live run of `playtest-youtube upload <reportDir>`**. Built: `pipeline/playtest_pipeline/youtube_auth.py` + `youtube_upload.py` + `youtube_cli.py`, installed with `pip install -e "pipeline[youtube]"` (google-auth + google-auth-oauthlib + google-api-python-client). Loopback OAuth (`http://127.0.0.1:<port>`, scope `youtube.upload`) against the wizard's Desktop client JSON, token cached at `%APPDATA%\playtest-recorder\youtube-token.json`; 8 MiB resumable `videos.insert` with the kit's title/description and `status: {privacyStatus: unlisted, embeddable: true, selfDeclaredMadeForKids: false}`; the URL is written to `report/youtube/url.txt`, which `playtest-notion publish` already reads without `--youtube`. Subcommands: `upload`, `auth`, `status`, `logout`.
+      Verified offline: `status` against the real client JSON, `upload --dry-run` on the 2026-08-27 golden-path bundle (8 chapters, 228 MiB), the re-upload and `--no-browser` guards, 17 unit tests (61 total green).
+      Remaining: `playtest-youtube auth` once (browser consent, weekly while the consent screen is in Testing), then a real upload. It lands PRIVATE until the audit passes — which is what the audit form's demo recording and (a)/(b) screenshots need anyway.
+
+- [ ] Live run of the in-app **Publish** flow. Built: a *Publish* button per session row in the Sessions card (enabled once `report/condensed.mp4` exists, with an "on YouTube" badge once `url.txt` does) opening a modal that shows the account state, the pending-audit warning, the editable kit title/description with a live chapter count, a visibility select, a real progress bar, and a result panel with Watch / Edit in Studio / Copy link. Main spawns `playtest-youtube upload --json` (`apps/recorder/src/main/youtube.ts`) and never reimplements OAuth; edits are saved back to `report/youtube/*.txt`, so the in-app and manual Studio routes share one source of truth. Settings card has the command + default visibility and a *Check setup* probe.
+      Verified: `verification/harnesses/youtube-ui.mjs cli` (real `YouTubeUploader` against the real `playtest-youtube status --json`, plus a scripted upload through `fake-playtest-youtube.mjs` covering auth → 29 progress events → done, the API-error path, and the kit round-trip) and `… ui` (real renderer + preload, 25 checks, screenshots in `verification/evidence/m2.4/`). Remaining: press it once against the real API after `playtest-youtube auth`.
 
 ## M3 — Self-hosted embed in Notion (optional now)
 
@@ -211,7 +190,7 @@ verify the iframe renders and a `[0:19]` link opens `report.html?t=19`.
 | GPL boundary is FSF doctrine, not case law (risk 2) | FFmpeg release wheel verified with the pinned LGPL build as a separate process; legal review still M6 |
 | Exclusive-fullscreen hotkey failures (risk 3 / tauri#7318) | Raw Input fallback verified live (injected input); **per-title fullscreen check still manual** (M5, steps above) |
 | Notion upload caps / embed validation (risk 7) | Upload path, Free-plan fallback and batching **verified live 2026-08-23**; `content_type` bug fixed; **carrier moved to YouTube** — Notion upload is the fallback only |
-| YouTube as carrier (risk 9) | **Default manual path verified live 2026-08-24**: chapter bar rendered, API-created Notion block played the unlisted video, `?t=` links opened at the expected moment, and chapters appeared in the embedded player (`verification/evidence/m2/m2.3-result.txt`). API uploads remain locked private until the compliance audit; sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
+| YouTube as carrier (risk 9) | **Default manual path verified live 2026-08-24**: chapter bar rendered, API-created Notion block played the unlisted video, `?t=` links opened at the expected moment, and chapters appeared in the embedded player (`verification/evidence/m2/m2.3-result.txt`). API uploads remain locked private until the compliance audit (submitted 2026-08-28, `verification/evidence/m2.4/wizard-m2.4-result.txt`); sessions with < 3 chapters get plain timestamps, no chapter bar (by design) |
 | Notion domain drift | The API returns `app.notion.com` page URLs (2026); `deploy/` CSP allows `*.notion.so`, `*.notion.com`, `*.notion.site` — only matters for the optional M3 embed |
 | AMD/Intel encoder parity unknown (perf risk 4) | Untested — on any non-NVIDIA PC: install OBS, run the recorder's preflight (expects `amf`/`qsv` in the encoder label, no "shared with streaming" warning), then `npx electron verification/harnesses/live-m5.mjs session` and check `verification/evidence/m5/session.json` `checks` are all true. Pipeline side: `--reencode` now has `h264_amf`/`h264_qsv` in its chain (args untested on real hardware) |
 | Mark anchor ≠ media timeline (found in M1) | outputDuration ~0.5 s early, chapters 0.7–1.3 s late; sidecar wins; TODO in `marks.ts` if tighter sync ever needed |

@@ -132,11 +132,85 @@ export interface PipelineConfig {
   mergeGapSeconds: number;
 }
 
+/**
+ * YouTube upload settings (PLAN M2.4). Same rule as `PipelineConfig`: the app
+ * only ever spawns the CLI a person could run in a terminal
+ * (`playtest-youtube`, `--json` for machine-readable progress), so the in-app
+ * Publish dialog and the documented command can never drift apart.
+ */
+export interface YouTubeConfig {
+  /** Executable or command-line prefix. Default "playtest-youtube". */
+  command: string;
+  /** Visibility requested for new uploads. */
+  privacy: YouTubePrivacy;
+}
+
+export type YouTubePrivacy = 'unlisted' | 'private' | 'public';
+
+/** `playtest-youtube status --json`, plus whether the CLI could be run at all. */
+export interface YouTubeStatus {
+  /** False when the command is missing / not installed — `error` says so. */
+  ok: boolean;
+  error?: string;
+  configDir?: string;
+  client?: {
+    path: string;
+    ok: boolean;
+    clientId?: string;
+    project?: string;
+    error?: string;
+    hint?: string;
+  };
+  token?: {
+    path: string;
+    exists: boolean;
+    expiry: string | null;
+    expired: boolean;
+    scopesOk: boolean;
+    hasRefreshToken: boolean;
+  };
+  /** google-auth + google-api-python-client importable in that interpreter. */
+  libraries?: boolean;
+  librariesHint?: string;
+  /** YOUTUBE_AUDIT_STATUS as the CLI saw it, and the warning when not passed. */
+  audit?: string | null;
+  auditWarning?: string | null;
+  /** Signed in and installed: an upload will not need the browser. */
+  ready?: boolean;
+}
+
+/** The kit text the Publish dialog shows, and can edit before uploading. */
+export interface YouTubeKit {
+  ok: boolean;
+  error?: string;
+  hint?: string;
+  title: string;
+  description: string;
+  /** Timestamp lines in the description — under 3 YouTube draws no chapter bar. */
+  chapters: number;
+  /** report/condensed.mp4 exists (the pipeline has produced a cut). */
+  hasVideo: boolean;
+  videoBytes: number;
+  /** Set when this bundle was uploaded before (report/youtube/url.txt). */
+  previousUrl: string | null;
+}
+
+export interface YouTubeUploadRequest {
+  sessionDir: string;
+  /** Written back to report/youtube/title.txt before the upload starts. */
+  title: string;
+  description: string;
+  privacy: YouTubePrivacy;
+  /** Upload again even though url.txt exists. */
+  force: boolean;
+}
+
 export interface RecorderConfig {
   obs: ObsConnectionConfig;
   hotkeys: HotkeyConfig;
   telemetry: TelemetryConfig;
   pipeline: PipelineConfig;
+  youtube: YouTubeConfig;
   /** Where per-session directories (sidecar, pipeline output) are created. */
   sessionsDir: string;
   /** Path to capture-helper.exe; auto-detected from the repo when empty. */
@@ -160,6 +234,10 @@ export interface SessionListEntry {
   recordingExists: boolean;
   /** `<sessionDir>/report/report.html` exists — the pipeline has run. */
   hasReport: boolean;
+  /** `<sessionDir>/report/condensed.mp4` exists — there is something to upload. */
+  hasCondensed: boolean;
+  /** From `report/youtube/url.txt`: this session is already on YouTube. */
+  youtubeUrl?: string;
   /** Session still open (no `end` line) — a crash or a session in progress. */
   unfinished: boolean;
 }
@@ -264,7 +342,26 @@ export type RecorderPushEvent =
   /** One line of pipeline stdout/stderr while `playtest-pipeline` runs from the app. */
   | { type: 'pipeline-output'; sessionDir: string; line: string }
   | { type: 'pipeline-started'; sessionDir: string; command: string }
-  | { type: 'pipeline-done'; sessionDir: string; code: number | null; reportPath?: string };
+  | { type: 'pipeline-done'; sessionDir: string; code: number | null; reportPath?: string }
+  /** YouTube upload lifecycle, driven by `playtest-youtube upload --json`. */
+  | { type: 'youtube-started'; sessionDir: string; command: string }
+  /** The browser consent screen is open and the CLI is waiting on it. */
+  | { type: 'youtube-auth-waiting'; sessionDir: string }
+  | { type: 'youtube-auth-done'; sessionDir: string; how: string }
+  | { type: 'youtube-progress'; sessionDir: string; sent: number; total: number }
+  | { type: 'youtube-output'; sessionDir: string; line: string }
+  | {
+      type: 'youtube-done';
+      sessionDir: string;
+      ok: boolean;
+      url?: string;
+      studioUrl?: string;
+      /** What YouTube actually applied — "private" until the audit passes. */
+      privacyStatus?: string;
+      requestedPrivacy?: string;
+      error?: string;
+      hint?: string;
+    };
 
 /** The API surface preload exposes as `window.playtest`. */
 export interface PlaytestApi {
@@ -299,6 +396,22 @@ export interface PlaytestApi {
   /** Spawn `playtest-pipeline process <sessionDir>`; output streams as push events. */
   runPipeline(sessionDir: string): Promise<{ ok: boolean; error?: string }>;
   cancelPipeline(): Promise<void>;
+  /** Is the uploader installed, configured, and signed in? (`playtest-youtube status --json`) */
+  youtubeStatus(): Promise<YouTubeStatus>;
+  /**
+   * Run the loopback OAuth flow: opens the Google consent screen in the
+   * user's browser and caches the token. Resolves when consent completes.
+   */
+  youtubeSignIn(reauth?: boolean): Promise<{ ok: boolean; error?: string; hint?: string }>;
+  /** Delete the cached token (access itself is revoked on Google's site). */
+  youtubeSignOut(): Promise<{ ok: boolean; error?: string }>;
+  /** Title/description/chapters for the Publish dialog, from the report bundle. */
+  youtubeKit(sessionDir: string): Promise<YouTubeKit>;
+  /** Save the (possibly edited) kit text, then spawn the upload; progress streams as push events. */
+  youtubeUpload(req: YouTubeUploadRequest): Promise<{ ok: boolean; error?: string }>;
+  youtubeCancel(): Promise<void>;
+  /** Open an https URL in the user's default browser (the youtu.be link). */
+  openExternal(url: string): Promise<{ ok: boolean; error?: string }>;
   /** Read-only playtest-rig advisories (Game DVR, HAGS, power plan — perf §8). */
   rigAdvisories(): Promise<PreflightCheck[]>;
   /** OBS install detection for the first-run wizard. */
@@ -326,6 +439,13 @@ export const IPC = {
   deleteSession: 'sessions:delete',
   runPipeline: 'pipeline:run',
   cancelPipeline: 'pipeline:cancel',
+  youtubeStatus: 'youtube:status',
+  youtubeSignIn: 'youtube:sign-in',
+  youtubeSignOut: 'youtube:sign-out',
+  youtubeKit: 'youtube:kit',
+  youtubeUpload: 'youtube:upload',
+  youtubeCancel: 'youtube:cancel',
+  openExternal: 'shell:open-external',
   rigAdvisories: 'rig:advisories',
   obsDetectInstall: 'obs:detect-install',
   pushEvent: 'recorder:event',

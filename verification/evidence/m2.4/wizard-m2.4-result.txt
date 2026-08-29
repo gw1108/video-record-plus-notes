@@ -1,0 +1,32 @@
+M2.4 wizard — complete 2026-08-28
+wizard:            bash verification/wizards/wizard-m2.4-youtube-api.sh (6 stages, all done)
+
+1 privacy policy:  https://gw1108.github.io/video-record-plus-notes/privacy (GitHub Pages from docs/; HTTP 200 on 2026-08-28)
+                   terms: https://gw1108.github.io/video-record-plus-notes/terms-of-service (HTTP 200 on 2026-08-28)
+2 cloud project:   created — id in .env as YOUTUBE_GCP_PROJECT
+3 API enabled:     YouTube Data API v3
+4 consent screen:  External / Testing, George added as test user, single scope
+                   https://www.googleapis.com/auth/youtube.upload
+                   (refresh tokens expire after 7 days while publishing status is Testing)
+5 OAuth client:    Desktop app; JSON at %APPDATA%\playtest-recorder\youtube-client.json
+                   client id in .env as YOUTUBE_OAUTH_CLIENT_ID (the secret stays in the JSON, never in the repo)
+6 audit form:      YouTube API Services compliance audit SUBMITTED 2026-08-28
+                   https://support.google.com/youtube/contact/yt_api_form
+                   .env: YOUTUBE_AUDIT_STATUS=submitted 2026-08-28
+
+What the form was told
+  endpoints:       youtube.videos.insert only (no read endpoints of any kind)
+  quota asked:     16,000 units/day (= 10 uploads at 1,600 units each), peak 3,200 units/min (one upload + one retry)
+  use case:        single-user Windows desktop tool; the developer uploads their own playtest recording to
+                   their own channel, unlisted, with note-derived chapters; nothing is read back from YouTube
+  attachments:     verification/audit/out/playtest-recorder-architecture.pdf   (architecture diagram)
+                   verification/audit/out/playtest-recorder-user-flow.pdf      (user flow)
+                   verification/audit/out/playtest-recorder-api-usage.pdf      (request body captured from --dry-run)
+                   browser screenshot of the live privacy policy page (address bar visible)
+  sources:         verification/audit/*.html + build_supporting.py; regenerate with
+                   `python verification/audit/build_supporting.py` then `npx electron verification/audit/render.mjs`
+
+Still pending (Google's side, weeks)
+  Until the audit passes every videos.insert from this project is locked PRIVATE regardless of
+  privacyStatus, so the manual Studio upload (M2.3) stays the product path. On the approval email set
+  YOUTUBE_AUDIT_STATUS=passed <date> in .env — the CLI and the Publish dialog drop their warning off that key.

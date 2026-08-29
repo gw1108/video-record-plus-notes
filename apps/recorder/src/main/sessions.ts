@@ -15,6 +15,7 @@ import {
   type SessionSidecar,
 } from '@playtest/shared';
 import type { SessionListEntry } from '../common/ipc-contract.js';
+import { hasCondensed, youtubeUrlOf } from './youtube.js';
 
 export const REPORT_RELATIVE_PATH = join('report', 'report.html');
 
@@ -63,6 +64,8 @@ export function entryFor(sessionDir: string): SessionListEntry | null {
     recordingFile: session.recordingFile,
     recordingExists: Boolean(session.recordingFile && existsSync(session.recordingFile)),
     hasReport: existsSync(join(sessionDir, REPORT_RELATIVE_PATH)),
+    hasCondensed: hasCondensed(sessionDir),
+    youtubeUrl: youtubeUrlOf(sessionDir),
     unfinished: !session.endedAtWall,
   };
 }

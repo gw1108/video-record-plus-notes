@@ -25,6 +25,8 @@ recording, and produces the report bundle:
     youtube/title.txt         # ready-to-paste YouTube title …
     youtube/description.txt   # … and description with note-derived chapters
                               #   (condensed time; 0:00 first, ≥ 10 s each, ≤ 4 800 B)
+    youtube/url.txt           # the uploaded video's URL, written by `playtest-youtube upload`
+                              #   (playtest-notion publish reads it without --youtube)
 ```
 
 ## Usage
@@ -34,6 +36,13 @@ playtest-pipeline process <session_dir> [--recording PATH] [--skip-stt] [--skip-
                           [--reencode] [--pre 20 --post 10] [--model small]
 playtest-pipeline inspect <session_dir>
 playtest-pipeline youtube-kit <session_dir>     # rebuild report/youtube/*.txt only
+
+playtest-youtube upload <report_dir> [--privacy unlisted] [--video PATH] [--title T]
+                        [--dry-run] [--force] [--client-json PATH] [--token PATH]
+                        [--port 0] [--no-browser]
+playtest-youtube auth [--reauth]   # loopback OAuth flow; caches the token
+playtest-youtube status            # credential paths, token state, audit status
+playtest-youtube logout            # forget the cached token
 ```
 
 - `--recording` overrides the recording path when the sidecar's
@@ -43,6 +52,22 @@ playtest-pipeline youtube-kit <session_dir>     # rebuild report/youtube/*.txt o
   `silero-vad` are not installed).
 - `--reencode` produces frame-exact cuts (slower); default is stream-copy,
   which snaps to keyframes — the cut map always reflects actual boundaries.
+
+## Uploading to YouTube
+
+`playtest-youtube` is the optional API path to the video carrier; the manual YouTube Studio upload of `youtube/title.txt` + `youtube/description.txt` stays the documented product path until Google's compliance audit passes. It installs with the `youtube` extra (`pip install -e "pipeline[youtube]"`), reads the Desktop-app OAuth client JSON the M2.4 wizard leaves at `%APPDATA%\playtest-recorder\youtube-client.json`, and caches its token beside it as `youtube-token.json`.
+
+```powershell
+playtest-youtube status                                  # what is configured, before anything opens
+playtest-youtube upload "<session_dir>" --dry-run        # exactly what would be sent; no auth, no network
+playtest-youtube upload "<session_dir>"                  # browser consent on first run, then videos.insert
+npx playtest-notion publish "<session_dir>\report"       # picks up youtube/url.txt on its own
+```
+
+- `upload` takes a report bundle or the session dir that holds it, uploads `report/condensed.mp4` (override with `--video`) with `privacyStatus=unlisted`, `embeddable=true`, `selfDeclaredMadeForKids=false`, in 8 MiB resumable chunks, and writes the resulting `https://youtu.be/<id>` to `report/youtube/url.txt`. A second run on the same bundle refuses unless you pass `--force`.
+- Scope is `youtube.upload` only — the tool writes one video and reads nothing back. Revoke access at <https://myaccount.google.com/permissions>; `logout` only deletes the local token.
+- **Until the audit passes, YouTube locks every upload from the project to *private*** whatever the request says. `upload` warns when `YOUTUBE_AUDIT_STATUS` (from `.env` or the environment) does not read `passed`, and reports the visibility the API actually returned.
+- While the consent screen is in *Testing*, Google expires the refresh token after 7 days: the browser flow reappearing weekly is expected.
 
 ## Install
 
@@ -56,7 +81,8 @@ Source and editable installs intentionally do not download FFmpeg. For developme
 
 ```powershell
 py -m pip install -e pipeline            # core source install; external FFmpeg required
-py -m pip install -e "pipeline[all]"     # + faster-whisper STT + Silero VAD
+py -m pip install -e "pipeline[all]"     # + faster-whisper STT + Silero VAD + YouTube uploader
+py -m pip install -e "pipeline[youtube]" # just the YouTube uploader (google-auth + api client)
 ```
 
 `silero-vad` pulls in `torchaudio`; the pipeline reads `mic.wav` with the stdlib, so `torchcodec` (torchaudio's I/O backend since 2.9) is not needed.

@@ -124,13 +124,18 @@ playtest-pipeline process "<sessions folder>\<session id>"
 
 # optional Notion page — the video carrier is an UNLISTED YOUTUBE UPLOAD of the condensed cut
 # (Notion-hosted video is capped at 5 MiB on free plans and has no deep links):
-#   1. YouTube Studio → Create → Upload videos → drop <session>\report\condensed.mp4
-#   2. title from <session>\report\youtube\title.txt; paste youtube\description.txt as the
-#      description (it carries the note-derived chapters); Audience: not made for kids;
+#   1. UPLOAD, either way:
+#      a) in the app: Sessions card -> Publish. Shows the kit title/description (editable, with a
+#         live chapter count), a visibility select, a progress bar and the finished link; needs
+#         pip install -e "pipeline[youtube]" plus one browser sign-in, and spawns playtest-youtube.
+#      b) by hand: YouTube Studio -> Create -> Upload videos -> drop <session>\report\condensed.mp4
+#   2. (route b only) title from <session>\report\youtube\title.txt; paste youtube\description.txt
+#      as the description (it carries the note-derived chapters); Audience: not made for kids;
 #      Visibility: Unlisted. Copy the https://youtu.be/<id> link.
 #   3. copy .env.example to .env and fill in NOTION_TOKEN (integration secret) + PARENT_ID
 #      (the page the integration is connected to) — or set them as env vars — then:
 playtest-notion publish "<session>\report" --youtube https://youtu.be/<id>
+#   (route a already wrote report\youtube\url.txt, so --youtube is optional after it)
 #   → page = summary · YouTube player · notes (each [m:ss] links to youtu.be/<id>?t=<condensed s>)
 #     · transcript toggle. `playtest-pipeline youtube-kit <session>` rebuilds the kit alone.
 #   Fallbacks: without --youtube the publisher uploads condensed.mp4 into Notion (paid plans;

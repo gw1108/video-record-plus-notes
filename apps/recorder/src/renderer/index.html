@@ -55,6 +55,7 @@
       <p class="hint">Every session in the sessions folder. <em>Run pipeline</em> spawns
         <code class="inline">playtest-pipeline</code> with the settings below and streams its output into the log;
         <em>Open report</em> opens the finished <code class="inline">report.html</code>;
+        <em>Publish</em> uploads the condensed cut to YouTube (unlisted) with the notes as chapters;
         <em>Delete</em> asks first, then moves the session folder to the Recycle Bin.</p>
     </section>
 
@@ -139,6 +140,23 @@
       <p class="hint">Segment policy: each mark keeps [mark − before, mark + after], grown to enclose any dictated
         sentence, and segments closer than the merge gap join. These flags are baked into the pipeline command
         shown after every session.</p>
+      <h2 class="sub">YouTube upload</h2>
+      <div class="row">
+        <label class="grow">Command <input id="youtube-command" type="text" placeholder="playtest-youtube" /></label>
+        <label>Default visibility
+          <select id="youtube-privacy">
+            <option value="unlisted">Unlisted</option>
+            <option value="private">Private</option>
+            <option value="public">Public</option>
+          </select>
+        </label>
+        <button id="youtube-check" type="button">Check setup</button>
+      </div>
+      <div id="youtube-setup" class="meta"></div>
+      <p class="hint">Publishing spawns <code class="inline">playtest-youtube</code> (install it with
+        <code class="inline">pip install -e "pipeline[youtube]"</code>). Sign-in happens once in your browser and the
+        token is cached in <code class="inline">%APPDATA%\playtest-recorder</code>. Until Google's compliance audit
+        passes, uploads stay private whatever you pick here.</p>
     </section>
 
     <section class="card">
@@ -200,6 +218,54 @@
         corner to resize. New lines only auto-scroll while the view is parked at the bottom.</p>
     </section>
   </main>
+
+  <dialog id="publish-dialog" class="publish">
+    <div class="publish-head">
+      <h2>Publish to YouTube</h2>
+      <span id="publish-session" class="meta"></span>
+    </div>
+
+    <div class="status-line">
+      <span id="publish-account-dot" class="status-dot"></span>
+      <span id="publish-account-text" class="grow"></span>
+      <button id="publish-signin" type="button">Sign in with Google</button>
+      <button id="publish-signout" type="button" class="subtle">Sign out</button>
+    </div>
+
+    <div id="publish-audit" class="notice warn hidden"></div>
+    <div id="publish-previous" class="notice hidden"></div>
+
+    <div id="publish-fields">
+      <label>Title <input id="publish-title" type="text" maxlength="100" /></label>
+      <label>Description &mdash; the chapter list comes from your notes
+        <textarea id="publish-description" rows="9" spellcheck="false"></textarea></label>
+      <div class="row publish-meta-row">
+        <label>Visibility
+          <select id="publish-privacy">
+            <option value="unlisted">Unlisted &mdash; anyone with the link</option>
+            <option value="private">Private &mdash; only you</option>
+            <option value="public">Public &mdash; listed on your channel</option>
+          </select>
+        </label>
+        <span id="publish-counts" class="meta grow"></span>
+      </div>
+    </div>
+
+    <div id="publish-progress" class="hidden">
+      <div class="progress"><div id="publish-progress-fill" class="progress-fill"></div></div>
+      <div id="publish-progress-text" class="meta"></div>
+    </div>
+
+    <div id="publish-result" class="notice pass hidden"></div>
+    <div id="publish-error" class="notice fail hidden"></div>
+
+    <div class="row publish-actions">
+      <button id="publish-close" type="button" class="subtle">Close</button>
+      <span class="grow"></span>
+      <button id="publish-cancel" type="button" class="hidden">Cancel upload</button>
+      <button id="publish-start" type="button" class="primary">Upload</button>
+    </div>
+  </dialog>
 
   <script type="module" src="./renderer.js"></script>
 </body>

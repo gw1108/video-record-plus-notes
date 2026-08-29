@@ -1,0 +1,30 @@
+# M2.4 ui-harness-cli — 2026-08-28T21:07:40.532Z
+
+PASS  status: the real playtest-youtube --json parses
+        ready=false libraries=true client=true
+PASS  status: carries the OAuth client id from the real client JSON
+PASS  status: a missing command resolves ok:false with a message
+        'playtest-youtube-does-not-exist' is not recognized as an internal or external command,
+op
+PASS  kit: writeKit → readKit round-trips the title
+PASS  kit: counts the timestamp lines (got 3, want 3)
+PASS  kit: reports the video size
+PASS  kit: no previousUrl before an upload
+PASS  kit: hasCondensed sees report/condensed.mp4
+PASS  kit: the golden-path bundle reads 8 chapters (got 8)
+PASS  kit: golden-path video is 228.4 MiB
+PASS  upload: emitted started
+PASS  upload: emitted the auth handshake
+PASS  upload: streamed 29 progress events
+PASS  upload: progress ends at 100%
+PASS  upload: done carries the watch URL
+        https://youtu.be/FAKEvideoId1
+PASS  upload: reports the audit-locked visibility separately from the requested one
+PASS  upload: the dialog text was saved to report/youtube/title.txt first
+PASS  upload: an API error surfaces its message
+        YouTube API error 403: The user has exceeded the number of videos they may upload.
+PASS  upload: and its hint
+        the project’s daily quota is spent — try again after the quota resets at midnight Pacific
+PASS  kit: the golden-path bundle has not been uploaded (no url.txt)
+
+all checks passed

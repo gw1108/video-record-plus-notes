@@ -20,9 +20,10 @@ import type {
   RecorderPushEvent,
   SessionSummary,
   StartSessionRequest,
+  YouTubeUploadRequest,
 } from '../common/ipc-contract.js';
 import { rigAdvisories } from './advisory.js';
-import { loadConfig, normalizePipeline, saveConfig } from './config.js';
+import { loadConfig, normalizePipeline, normalizeYouTube, saveConfig } from './config.js';
 import { findHelperBinary, GamepadCaptureHelper } from './helper.js';
 import { ObsClient } from './obs.js';
 import {
@@ -36,6 +37,7 @@ import { applyRecommended, runPreflight } from './preflight.js';
 import { SessionController } from './recording.js';
 import { entryFor, listSessions, REPORT_RELATIVE_PATH } from './sessions.js';
 import { RecorderTray } from './tray.js';
+import { readKit, YouTubeUploader } from './youtube.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +48,7 @@ let config: RecorderConfig;
 const obs = new ObsClient();
 const controller = new SessionController(obs);
 const pipeline = new PipelineRunner();
+const youtube = new YouTubeUploader();
 let tray: RecorderTray | null = null;
 let mainWindow: BrowserWindow | null = null;
 let pendingSummary: SessionSummary | null = null;
@@ -181,6 +184,22 @@ async function handleResume(): Promise<{ ok: boolean; error?: string }> {
  * session is live: STT/VAD/FFmpeg are exactly the load that must never
  * overlap recording (perf report §1).
  */
+/**
+ * Uploads compete with a live session for CPU and the network, and the
+ * recorder's whole point is that nothing heavy runs during one (perf §1).
+ */
+function startUpload(req: YouTubeUploadRequest): { ok: boolean; error?: string } {
+  if (controller.recording) return { ok: false, error: 'Cannot upload while recording.' };
+  if (youtube.running) return { ok: false, error: `An upload is already running for ${youtube.running}.` };
+  if (!entryFor(req.sessionDir)) return { ok: false, error: `No session sidecar in ${req.sessionDir}.` };
+  try {
+    youtube.upload(config.youtube, req);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err instanceof Error ? err.message : err) };
+  }
+}
+
 function startPipeline(sessionDir: string): { ok: boolean; error?: string } {
   if (controller.recording) return { ok: false, error: 'Cannot run the pipeline while recording.' };
   if (pipeline.running) return { ok: false, error: `Pipeline already running for ${pipeline.running}.` };
@@ -273,6 +292,7 @@ function registerIpc(): void {
       ...next,
       obs: { host: next.obs.host, port: next.obs.port, password },
       pipeline: normalizePipeline(next.pipeline),
+      youtube: normalizeYouTube(next.youtube),
     };
     saveConfig(config);
     tray?.setMarkHotkeyLabel(config.hotkeys.mark.label);
@@ -412,6 +432,24 @@ function registerIpc(): void {
   ipcMain.handle('pipeline:run', (_e, sessionDir: string) => startPipeline(sessionDir));
   ipcMain.handle('pipeline:cancel', () => pipeline.cancel());
 
+  // Publish to YouTube. Everything heavy stays in `playtest-youtube`; main
+  // only spawns it, so the dialog and the documented CLI stay in step.
+  ipcMain.handle('youtube:status', () => youtube.status(config.youtube));
+  ipcMain.handle('youtube:sign-in', (_e, reauth?: boolean) => youtube.signIn(config.youtube, reauth === true));
+  ipcMain.handle('youtube:sign-out', () => youtube.signOut(config.youtube));
+  ipcMain.handle('youtube:kit', (_e, sessionDir: string) => {
+    if (!entryFor(sessionDir)) return { ok: false, error: 'Not a session directory.', title: '', description: '', chapters: 0, hasVideo: false, videoBytes: 0, previousUrl: null };
+    return readKit(sessionDir);
+  });
+  ipcMain.handle('youtube:upload', (_e, req: YouTubeUploadRequest) => startUpload(req));
+  ipcMain.handle('youtube:cancel', () => youtube.cancel());
+  ipcMain.handle('shell:open-external', async (_e, url: string) => {
+    // Only ever the youtu.be / Studio links the uploader produced.
+    if (!/^https:\/\//i.test(url)) return { ok: false, error: 'Refusing to open a non-https URL.' };
+    await shell.openExternal(url);
+    return { ok: true };
+  });
+
   // Controller/HID capture for the binding buttons: run the helper's capture
   // mode and forward each identified press to the renderer. Keyboard/mouse
   // capture never comes through here (plain DOM events in the renderer).
@@ -474,6 +512,22 @@ function wireController(): void {
     broadcast({ type: 'pipeline-done', sessionDir, code, reportPath });
     if (code === 0 && reportPath) notify('Report ready', reportPath);
     else notify('Pipeline failed', `Exit code ${code ?? 'unknown'} — see the log in the recorder window.`);
+  });
+
+  youtube.on('started', (sessionDir: string, command: string) => {
+    broadcast({ type: 'youtube-started', sessionDir, command });
+    controller.emit('log', 'info', `youtube: ${command}`);
+  });
+  youtube.on('authWaiting', (sessionDir: string) => broadcast({ type: 'youtube-auth-waiting', sessionDir }));
+  youtube.on('authDone', (sessionDir: string, how: string) => broadcast({ type: 'youtube-auth-done', sessionDir, how }));
+  youtube.on('progress', (sessionDir: string, sent: number, total: number) =>
+    broadcast({ type: 'youtube-progress', sessionDir, sent, total }),
+  );
+  youtube.on('line', (sessionDir: string, line: string) => broadcast({ type: 'youtube-output', sessionDir, line }));
+  youtube.on('done', (sessionDir: string, result: { ok: boolean; url?: string; studioUrl?: string; privacyStatus?: string; requestedPrivacy?: string; error?: string; hint?: string }) => {
+    broadcast({ type: 'youtube-done', sessionDir, ...result });
+    if (result.ok) notify('Uploaded to YouTube', result.url ?? '');
+    else notify('Upload failed', result.error ?? 'see the recorder window');
   });
 
   obs.on('connected', () => broadcast({ type: 'obs-connection', connected: true }));

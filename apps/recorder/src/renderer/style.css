@@ -250,3 +250,59 @@ code.inline { display: inline; padding: 1px 5px; white-space: normal; }
 .wizard-body p { margin: 0 0 8px; }
 .wizard-body ul { margin: 0 0 8px; padding-left: 18px; }
 .wizard-body li { margin-bottom: 3px; }
+
+/* Publish-to-YouTube dialog. Reuses .progress / .status-dot / .badge from
+   above so an upload reads the same as a recording or a pipeline run. */
+dialog.publish {
+  width: min(680px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+dialog.publish::backdrop { background: rgba(0, 0, 0, 0.55); }
+.publish-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.publish-head h2 { margin: 0; }
+.publish-head .meta { margin: 0; }
+#publish-fields { display: flex; flex-direction: column; gap: 10px; }
+#publish-fields textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 8px 9px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  width: 100%;
+  resize: vertical;
+}
+#publish-fields textarea:focus { outline: 1px solid var(--accent); }
+.publish-meta-row { align-items: flex-end; margin-bottom: 0; }
+.publish-meta-row .meta { text-align: right; margin: 0; }
+.publish-actions { margin-top: 14px; margin-bottom: 0; }
+#publish-progress { margin-top: 14px; }
+#publish-progress .meta { margin-bottom: 0; }
+
+/* Inline notices: the audit warning, the "already uploaded" line, the result. */
+.notice {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin: 10px 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.notice.warn { border-left-color: var(--warn); background: rgba(240, 180, 41, 0.1); }
+.notice.fail { border-left-color: var(--fail); background: rgba(239, 83, 80, 0.1); }
+.notice.pass { border-left-color: var(--pass); background: rgba(62, 207, 142, 0.1); }
+.notice a { color: var(--accent); }
+.notice .row { margin: 8px 0 0; }
+.notice button { padding: 5px 10px; font-size: 12px; }
+
+.badge.youtube { background: rgba(239, 83, 80, 0.18); color: #ff8a85; }
+#youtube-setup:empty { display: none; }

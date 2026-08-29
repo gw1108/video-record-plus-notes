@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Playtest Recorder — YouTube Data API architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #fff; font-family: "Segoe UI", system-ui, sans-serif; color: #1a1d21; }
+  .canvas { position: relative; width: 1600px; height: 900px; padding: 36px 40px; }
+  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.2px; }
+  .sub { font-size: 16px; color: #55606d; margin-top: 7px; line-height: 1.5; }
+  .zone { position: absolute; border: 2px dashed #b9c2cc; border-radius: 12px; }
+  .zone > .zone-label {
+    position: absolute; top: -12px; left: 18px; background: #fff; padding: 0 9px;
+    font-size: 14px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: #66707d;
+  }
+  .box {
+    position: absolute; border: 1.5px solid #c5cdd6; border-radius: 9px; background: #f7f9fb;
+    padding: 12px 14px;
+  }
+  .box h2 { font-size: 16.5px; font-weight: 650; margin-bottom: 5px; }
+  .box p { font-size: 13.5px; line-height: 1.5; color: #4a5561; }
+  .box code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.7px; color: #1f2a36; }
+  .app, .cli { background: #eef4ff; border-color: #93b4f5; }
+  .store { background: #f4f2ee; border-color: #cdc4b4; }
+  .google { background: #fff6f5; border-color: #f0a9a3; }
+  .channel { background: #f2fbf5; border-color: #97d6ae; }
+  svg { position: absolute; inset: 0; width: 1600px; height: 900px; pointer-events: none; }
+  .arrow { stroke: #6a7686; stroke-width: 2.2; fill: none; }
+  .arrow.key { stroke: #c0392b; stroke-width: 2.6; }
+  .lbl { font-size: 13px; fill: #46505c; font-family: "Segoe UI", system-ui, sans-serif; }
+  .lbl.key { fill: #a5301f; font-weight: 600; }
+  .lbl-bg { fill: #fff; }
+  .footer {
+    position: absolute; left: 40px; right: 40px; bottom: 28px;
+    border: 1.5px solid #d5dbe2; border-left: 5px solid #6a7686; border-radius: 8px;
+    background: #fbfcfd; padding: 12px 16px;
+  }
+  .footer h3 { font-size: 14.5px; font-weight: 650; margin-bottom: 6px; }
+  .footer ul { display: flex; gap: 26px; list-style: none; }
+  .footer li { font-size: 13.5px; color: #46505c; line-height: 1.45; flex: 1; }
+  .footer strong { color: #1a1d21; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <h1>Playtest Recorder — YouTube Data API v3 integration</h1>
+  <p class="sub">Single-user Windows desktop application. One endpoint: <strong>videos.insert</strong>. One scope:
+    <code>https://www.googleapis.com/auth/youtube.upload</code>. No backend server, no read access, no third-party data.</p>
+
+  <svg viewBox="0 0 1600 900">
+    <defs>
+      <marker id="head" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+        <path d="M0,0 L8,3.2 L0,6.4 z" fill="#6a7686" />
+      </marker>
+      <marker id="headKey" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+        <path d="M0,0 L8,3.2 L0,6.4 z" fill="#c0392b" />
+      </marker>
+      <marker id="tailKey" markerWidth="9" markerHeight="9" refX="0.5" refY="3.2" orient="auto">
+        <path d="M8,0 L0,3.2 L8,6.4 z" fill="#c0392b" />
+      </marker>
+    </defs>
+
+    <!-- Playtest Recorder → playtest-youtube (local spawn) -->
+    <path class="arrow" d="M 406 232 L 450 232" marker-end="url(#head)" />
+    <!-- session folder → CLI (the video and the reviewed text) -->
+    <path class="arrow" d="M 400 355 L 478 355 L 478 306" marker-end="url(#head)" />
+    <!-- CLI → token cache -->
+    <path class="arrow" d="M 620 304 L 620 374" marker-end="url(#head)" />
+    <!-- 1 · browser → Google consent -->
+    <path class="arrow key" d="M 400 564 L 790 564 L 790 290 L 866 290" marker-end="url(#headKey)" />
+    <!-- 2 · consent → loopback redirect back into the CLI -->
+    <path class="arrow key" d="M 866 240 L 706 240" marker-end="url(#headKey)" />
+    <!-- 3 / 4 · the upload call and its response -->
+    <path class="arrow key" d="M 704 295 L 745 295 L 745 470 L 864 470"
+          marker-end="url(#headKey)" marker-start="url(#tailKey)" />
+    <!-- API → the user's channel -->
+    <path class="arrow" d="M 1210 594 L 1210 686" marker-end="url(#head)" />
+
+    <rect class="lbl-bg" x="404" y="206" width="52" height="19" />
+    <text class="lbl" x="408" y="220">spawn</text>
+
+    <rect class="lbl-bg" x="404" y="330" width="160" height="19" />
+    <text class="lbl" x="408" y="344">video + reviewed text</text>
+
+    <rect class="lbl-bg" x="626" y="330" width="94" height="19" />
+    <text class="lbl" x="630" y="344">cache token</text>
+
+    <rect class="lbl-bg" x="408" y="574" width="244" height="19" />
+    <text class="lbl key" x="412" y="588">1 · user signs in and consents</text>
+
+    <rect class="lbl-bg" x="708" y="200" width="166" height="36" />
+    <text class="lbl key" x="712" y="214">2 · auth code returned to</text>
+    <text class="lbl key" x="712" y="230">http://127.0.0.1:&lt;port&gt;</text>
+
+    <text class="lbl key" x="880" y="348">3 · videos.insert + the media file (resumable, 8 MiB chunks)</text>
+    <text class="lbl" x="880" y="372">4 · the API returns the new video id — saved locally as https://youtu.be/&lt;id&gt;</text>
+  </svg>
+
+  <!-- ── the user's machine ─────────────────────────────────────── -->
+  <div class="zone" style="left:40px; top:132px; width:690px; height:508px;">
+    <span class="zone-label">User's Windows PC — everything here is local</span>
+  </div>
+
+  <div class="box app" style="left:66px; top:180px; width:340px; height:104px;">
+    <h2>Playtest Recorder (Electron)</h2>
+    <p>Records the user's own playtest session with OBS. Its <em>Publish</em> dialog shows the title, description
+      and visibility for review before anything is sent.</p>
+  </div>
+
+  <div class="box cli" style="left:456px; top:180px; width:244px; height:124px;">
+    <h2>playtest-youtube</h2>
+    <p>Python CLI, spawned locally by the app. Holds the OAuth flow and the upload (google-auth,
+      google-api-python-client).</p>
+  </div>
+
+  <div class="box store" style="left:66px; top:330px; width:334px; height:86px;">
+    <h2>Session folder (local disk)</h2>
+    <p><code>condensed.mp4</code> · <code>title.txt</code> · <code>description.txt</code> · <code>url.txt</code></p>
+  </div>
+
+  <div class="box store" style="left:456px; top:380px; width:244px; height:128px;">
+    <h2>%APPDATA%</h2>
+    <p><code>youtube-client.json</code><br /><code>youtube-token.json</code><br />
+      The token never leaves this machine.</p>
+  </div>
+
+  <div class="box" style="left:66px; top:520px; width:334px; height:88px;">
+    <h2>User's web browser</h2>
+    <p>Opened once for the Google consent screen (and again when the token expires).</p>
+  </div>
+
+  <!-- ── Google ─────────────────────────────────────────────────── -->
+  <div class="zone" style="left:850px; top:132px; width:710px; height:508px;">
+    <span class="zone-label">Google</span>
+  </div>
+
+  <div class="box google" style="left:872px; top:180px; width:666px; height:120px;">
+    <h2>Google OAuth 2.0 — installed-app (loopback) flow</h2>
+    <p>The user grants exactly one scope: <code>youtube.upload</code>. The OAuth client is a
+      <strong>Desktop app</strong> client, so the redirect is loopback only. Access is revocable at any time at
+      <code>myaccount.google.com/permissions</code>.</p>
+  </div>
+
+  <div class="box google" style="left:872px; top:400px; width:666px; height:194px;">
+    <h2>YouTube Data API v3 — <code>videos.insert</code> (the only call)</h2>
+    <p><code>part=snippet,status</code>, resumable upload in 8 MiB chunks.<br />
+      <code>snippet</code>: title, description (chapter timestamps derived from the user's own notes), tags,
+      <code>categoryId=20</code>.<br />
+      <code>status</code>: <code>privacyStatus=unlisted</code> (user-selectable), <code>embeddable=true</code>,
+      <code>selfDeclaredMadeForKids=false</code>.<br />
+      Cost: <strong>1,600 quota units per upload</strong>. One at a time — never concurrent, never batched.</p>
+  </div>
+
+  <div class="box channel" style="left:1015px; top:686px; width:390px; height:92px;">
+    <h2>The user's own YouTube channel</h2>
+    <p>The uploaded video, unlisted by default — theirs to edit or delete in YouTube Studio.</p>
+  </div>
+
+  <div class="footer">
+    <h3>Not used and not requested</h3>
+    <ul>
+      <li><strong>No backend.</strong> There is no server of ours in this diagram: the call is made from the user's
+        own machine with the user's own credentials.</li>
+      <li><strong>No read access.</strong> No <code>search.list</code>, no <code>videos.list</code>, no channel,
+        comment, subscriber or analytics data is ever requested.</li>
+      <li><strong>No third-party data.</strong> One user per installation, uploading their own recording. Nothing is
+        uploaded without an explicit press of <em>Upload</em>.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

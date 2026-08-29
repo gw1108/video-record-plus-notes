@@ -1,0 +1,41 @@
+# M2.4 ui-harness-ui — 2026-08-28T21:09:10.663Z
+
+PASS  renderer: loaded with no console errors
+PASS  sessions: the row with a condensed cut has a Publish button
+PASS  sessions: it is enabled when report/condensed.mp4 exists
+PASS  sessions: it is disabled for a session with no condensed cut
+PASS  sessions: an already-uploaded session says "Published"
+PASS  sessions: the uploaded session carries the "on YouTube" badge
+PASS  dialog: the Publish button opens it
+        clicked
+PASS  dialog: it is modal and open
+PASS  dialog: the title field is pre-filled from the kit
+PASS  dialog: it counts the chapters in the description
+        51/100 title · 8 chapters · 638/5000 bytes · 228.4 MiB video
+PASS  dialog: the account line reflects the cached token
+        Signed in · token valid until Sep 3, 2026, 2:09 PM
+PASS  dialog: the pending-audit warning is shown
+PASS  dialog: editing the description updates the chapter count and warns under 3
+        51/100 title · 2 chapters (under 3 — no chapter bar) · 39/5000 bytes · 228.4 MiB video
+PASS  upload: the Upload button starts it
+        clicked
+PASS  upload: the progress bar shows a percentage
+        Uploading… 73.6%  (168.0 MiB of 228.4 MiB)
+PASS  upload: Cancel replaces Upload while it runs
+PASS  upload: the fields lock while it runs
+PASS  done: the result notice replaces the progress bar
+PASS  done: it links the uploaded video
+        https://youtu.be/FAKEvideoId1
+PASS  done: it explains the audit-locked visibility
+        Uploaded. https://youtu.be/FAKEvideoId1YouTube set the visibility to private (you asked for unlisted) — that is the pending compliance audit
+PASS  done: it points at url.txt for the Notion publish
+PASS  done: the button now offers a second (forced) upload
+        Upload again
+PASS  not installed: the dialog names the fix
+        Could not run "playtest-youtube". Install the uploader with: pip install -e "pipeline[youtube]"
+PASS  not installed: Upload is disabled
+PASS  renderer: still no console errors at the end
+
+screenshots: C:\GameDev\video-record-plus-notes\verification\evidence\m2.4
+
+all checks passed

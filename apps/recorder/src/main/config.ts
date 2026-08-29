@@ -1,7 +1,13 @@
 import { app, safeStorage } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { HotkeyBinding, PipelineConfig, RecorderConfig } from '../common/ipc-contract.js';
+import type {
+  HotkeyBinding,
+  PipelineConfig,
+  RecorderConfig,
+  YouTubeConfig,
+  YouTubePrivacy,
+} from '../common/ipc-contract.js';
 
 /**
  * On-disk shape of the obs section: the password is stored encrypted via
@@ -66,6 +72,12 @@ export const DEFAULT_PIPELINE: PipelineConfig = {
   mergeGapSeconds: 1,
 };
 
+/** Uploader defaults. Unlisted is the carrier the Notion page embeds. */
+export const DEFAULT_YOUTUBE: YouTubeConfig = {
+  command: 'playtest-youtube',
+  privacy: 'unlisted',
+};
+
 export function defaultConfig(): RecorderConfig {
   return {
     obs: { host: '127.0.0.1', port: 4455, password: '' },
@@ -81,6 +93,7 @@ export function defaultConfig(): RecorderConfig {
       pollIntervalMs: 500,
     },
     pipeline: { ...DEFAULT_PIPELINE },
+    youtube: { ...DEFAULT_YOUTUBE },
     sessionsDir: join(app.getPath('videos'), 'PlaytestSessions'),
     helperPath: '',
     setupDone: false,
@@ -109,6 +122,16 @@ export function normalizePipeline(raw: Partial<PipelineConfig> | undefined): Pip
     preSeconds: finiteOr(raw?.preSeconds, d.preSeconds),
     postSeconds: finiteOr(raw?.postSeconds, d.postSeconds),
     mergeGapSeconds: finiteOr(raw?.mergeGapSeconds, d.mergeGapSeconds),
+  };
+}
+
+/** Clamp the youtube section; an unknown privacy value would be rejected by the API. */
+export function normalizeYouTube(raw: Partial<YouTubeConfig> | undefined): YouTubeConfig {
+  const privacies: YouTubePrivacy[] = ['unlisted', 'private', 'public'];
+  const privacy = privacies.find((p) => p === raw?.privacy) ?? DEFAULT_YOUTUBE.privacy;
+  return {
+    command: (typeof raw?.command === 'string' && raw.command.trim()) || DEFAULT_YOUTUBE.command,
+    privacy,
   };
 }
 
@@ -151,6 +174,7 @@ export function loadConfig(): RecorderConfig {
       },
       telemetry: { ...defaults.telemetry, ...raw.telemetry },
       pipeline: normalizePipeline(raw.pipeline),
+      youtube: normalizeYouTube(raw.youtube),
       sessionsDir: raw.sessionsDir ?? defaults.sessionsDir,
       helperPath: raw.helperPath ?? defaults.helperPath,
       // Configs from before the wizard existed belong to users who already

@@ -201,3 +201,5 @@ def print_kit_instructions(kit_dir: Path, report_dir: Path) -> None:
     print("  2. Title from title.txt, paste description.txt (chapters), Visibility: Unlisted,")
     print("     Audience: not made for kids")
     print(f"  3. playtest-notion publish \"{report_dir}\" --youtube https://youtu.be/<id>")
+    print("  (or, once `pip install -e \"pipeline[youtube]\"` and the M2.4 wizard are done:")
+    print(f"   playtest-youtube upload \"{report_dir}\" — same title/description, then publish without --youtube)")

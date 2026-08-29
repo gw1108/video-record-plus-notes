@@ -8,6 +8,7 @@ import type {
   RecorderConfig,
   RecorderPushEvent,
   StartSessionRequest,
+  YouTubeUploadRequest,
 } from '../common/ipc-contract.js';
 
 const api: PlaytestApi = {
@@ -30,6 +31,13 @@ const api: PlaytestApi = {
   deleteSession: (sessionDir: string) => ipcRenderer.invoke('sessions:delete', sessionDir),
   runPipeline: (sessionDir: string) => ipcRenderer.invoke('pipeline:run', sessionDir),
   cancelPipeline: () => ipcRenderer.invoke('pipeline:cancel'),
+  youtubeStatus: () => ipcRenderer.invoke('youtube:status'),
+  youtubeSignIn: (reauth?: boolean) => ipcRenderer.invoke('youtube:sign-in', reauth),
+  youtubeSignOut: () => ipcRenderer.invoke('youtube:sign-out'),
+  youtubeKit: (sessionDir: string) => ipcRenderer.invoke('youtube:kit', sessionDir),
+  youtubeUpload: (req: YouTubeUploadRequest) => ipcRenderer.invoke('youtube:upload', req),
+  youtubeCancel: () => ipcRenderer.invoke('youtube:cancel'),
+  openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   rigAdvisories: () => ipcRenderer.invoke('rig:advisories'),
   obsDetectInstall: () => ipcRenderer.invoke('obs:detect-install'),
   onEvent: (callback: (event: RecorderPushEvent) => void) => {

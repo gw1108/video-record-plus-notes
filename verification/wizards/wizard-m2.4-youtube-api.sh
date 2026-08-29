@@ -268,6 +268,12 @@ finish() {
 #   YOUTUBE_AUDIT_STATUS                   → .env  (pending until Google replies)
 # Nothing is sent to GitHub. Until the audit passes, EVERY API upload is
 # locked private — the manual Studio upload stays the product path.
+#
+# COMPLETED 2026-08-28 — all six stages done, compliance audit submitted.
+# Record: verification/evidence/m2.4/wizard-m2.4-result.txt (what the form was
+# told, and the diagrams attached to it). Google's reply is the only thing left,
+# tracked as YOUTUBE_AUDIT_STATUS in .env. Re-run this only to redo the Cloud
+# setup (a new project, a replacement OAuth client, or a second audit request).
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=6
@@ -286,7 +292,7 @@ to_clip() {
   if command -v clip.exe >/dev/null 2>&1; then printf '%s' "$1" | clip.exe && note "(copied to clipboard)"; fi
 }
 
-banner "M2.4 — YouTube Data API uploader: Google Cloud + audit"
+banner "M2.4 — YouTube Data API uploader: Google Cloud + audit  ·  COMPLETED 2026-08-28"
 
 # ── 1 ─────────────────────────────────────────────────────────────────────
 stage "Privacy policy page (the audit and the consent screen both want one)"
@@ -425,11 +431,15 @@ say "                      user's own channel as unlisted; reads nothing back; s
 say "    demo access:     a short screen recording of the CLI is accepted."
 note "The audit is free and typically takes weeks; Google replies by email."
 pause "Press Enter once the audit form is submitted."
-write_env YOUTUBE_AUDIT_STATUS "requested $(date +%Y-%m-%d)"
+write_env YOUTUBE_AUDIT_STATUS "submitted $(date +%Y-%m-%d)"
 printf '\n'
-say "When the approval email arrives: set YOUTUBE_AUDIT_STATUS=passed in .env, then ask Claude to build"
-say "PLAN M2.4 step 3 (playtest-youtube upload) — it reads $CLIENT_JSON_WIN and caches"
-say "tokens next to it as youtube-token.json. Until then keep using the manual upload (M2.3 wizard)."
+say "The uploader itself is already built: pip install -e \"pipeline[youtube]\", then"
+say "  playtest-youtube status              # confirms it sees $CLIENT_JSON_WIN"
+say "  playtest-youtube auth                # this browser consent, token cached next to the client JSON"
+say "  playtest-youtube upload <reportDir>  # unlisted videos.insert with the kit title + chapters"
+say "It works before the audit passes — the video just lands PRIVATE, which is fine for the demo recording"
+say "the audit form asks for. When the approval email arrives set YOUTUBE_AUDIT_STATUS=passed in .env; until"
+say "then the manual Studio upload (M2.3 wizard) stays the product path."
 pause "Done. Press Enter for the summary."
 
 finish

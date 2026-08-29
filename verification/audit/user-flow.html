@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Playtest Recorder — user flow for a YouTube upload</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #fff; font-family: "Segoe UI", system-ui, sans-serif; color: #1a1d21; }
+  .canvas { position: relative; width: 1600px; height: 900px; padding: 36px 40px; }
+  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.2px; }
+  .sub { font-size: 16px; color: #55606d; margin-top: 7px; line-height: 1.5; }
+  .step {
+    position: absolute; width: 282px; border: 1.5px solid #c5cdd6; border-radius: 10px;
+    background: #f7f9fb; padding: 13px 15px 14px;
+  }
+  .step .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 25px; height: 25px; border-radius: 50%; background: #33415a; color: #fff;
+    font-size: 14px; font-weight: 700; margin-bottom: 8px;
+  }
+  .step h2 { font-size: 16.5px; font-weight: 650; margin: 0 0 5px; }
+  .step p { font-size: 13.5px; line-height: 1.5; color: #4a5561; }
+  .step code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.7px; color: #1f2a36; }
+  .local { border-color: #b9c2cc; }
+  .google { background: #fff6f5; border-color: #f0a9a3; }
+  .google .n { background: #c0392b; }
+  .api { background: #eef4ff; border-color: #93b4f5; }
+  .api .n { background: #2a63c4; }
+  .tag {
+    display: inline-block; font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-bottom: 9px;
+  }
+  .tag.offline { background: #eceff3; color: #5b6673; }
+  .tag.consent { background: #fbe3e0; color: #a5301f; }
+  .tag.apicall { background: #e2ecfd; color: #24509c; }
+  svg { position: absolute; inset: 0; width: 1600px; height: 900px; pointer-events: none; }
+  .arrow { stroke: #8b95a3; stroke-width: 2.4; fill: none; }
+  .gate {
+    position: absolute; border: 1.5px dashed #f0a9a3; border-radius: 10px; background: #fffaf9;
+    padding: 12px 15px;
+  }
+  .gate h3 { font-size: 15px; font-weight: 650; margin-bottom: 5px; color: #a5301f; }
+  .gate p { font-size: 13.3px; line-height: 1.5; color: #6d4b46; }
+  .footer {
+    position: absolute; left: 40px; right: 40px; bottom: 28px;
+    border: 1.5px solid #d5dbe2; border-left: 5px solid #33415a; border-radius: 8px;
+    background: #fbfcfd; padding: 12px 16px;
+  }
+  .footer h3 { font-size: 14.5px; font-weight: 650; margin-bottom: 6px; }
+  .footer ul { display: flex; gap: 26px; list-style: none; }
+  .footer li { font-size: 13.5px; color: #46505c; line-height: 1.45; flex: 1; }
+  .footer strong { color: #1a1d21; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <h1>User flow — from a recorded playtest to an unlisted YouTube video</h1>
+  <p class="sub">Steps 1–4 are entirely local. Google is involved only at step 5 (consent, first run) and step 7
+    (the single API call) — and step 7 happens only after the user has reviewed exactly what will be sent.
+    One video per upload, always started by a button press.</p>
+
+  <svg viewBox="0 0 1600 900">
+    <defs>
+      <marker id="a" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+        <path d="M0,0 L8,3.2 L0,6.4 z" fill="#8b95a3" />
+      </marker>
+    </defs>
+    <path class="arrow" d="M 358 262 L 396 262" marker-end="url(#a)" />
+    <path class="arrow" d="M 720 262 L 758 262" marker-end="url(#a)" />
+    <path class="arrow" d="M 1082 262 L 1120 262" marker-end="url(#a)" />
+    <!-- wrap to the second row -->
+    <path class="arrow" d="M 1402 372 L 1402 430 L 216 430 L 216 486" marker-end="url(#a)" />
+    <path class="arrow" d="M 358 578 L 396 578" marker-end="url(#a)" />
+    <path class="arrow" d="M 720 578 L 758 578" marker-end="url(#a)" />
+    <path class="arrow" d="M 1082 578 L 1120 578" marker-end="url(#a)" />
+  </svg>
+
+  <div class="step local" style="left:76px; top:170px;">
+    <span class="tag offline">local only</span><br />
+    <span class="n">1</span>
+    <h2>Record a session</h2>
+    <p>OBS records the developer's own game session. A hotkey marks interesting moments; the developer dictates
+      a note at each mark.</p>
+  </div>
+
+  <div class="step local" style="left:438px; top:170px;">
+    <span class="tag offline">local only</span><br />
+    <span class="n">2</span>
+    <h2>Process it on the machine</h2>
+    <p>FFmpeg cuts the recording down to the marked moments; local speech-to-text turns each dictated note into
+      text. Nothing leaves the PC.</p>
+  </div>
+
+  <div class="step local" style="left:800px; top:170px;">
+    <span class="tag offline">local only</span><br />
+    <span class="n">3</span>
+    <h2>A title and description are drafted</h2>
+    <p>Generated from the user's own notes: one chapter timestamp per note, in the condensed video's timeline.
+      Written to local text files.</p>
+  </div>
+
+  <div class="step local" style="left:1162px; top:170px;">
+    <span class="tag offline">local only</span><br />
+    <span class="n">4</span>
+    <h2>The user presses <em>Publish</em></h2>
+    <p>In the app's Sessions list. This opens the Publish dialog — still no network call.</p>
+  </div>
+
+  <div class="step google" style="left:76px; top:486px;">
+    <span class="tag consent">google consent</span><br />
+    <span class="n">5</span>
+    <h2>Sign in with Google</h2>
+    <p>First run only (and after the token expires). The system browser opens Google's consent screen for the
+      single scope <code>youtube.upload</code>. The token is cached locally.</p>
+  </div>
+
+  <div class="step local" style="left:438px; top:486px;">
+    <span class="tag offline">local only</span><br />
+    <span class="n">6</span>
+    <h2>Review, then confirm</h2>
+    <p>The dialog shows the title, the full description with its chapters, and a visibility select that defaults to
+      <strong>Unlisted</strong>. All of it is editable. Nothing is sent until <em>Upload</em> is pressed.</p>
+  </div>
+
+  <div class="step api" style="left:800px; top:486px;">
+    <span class="tag apicall">api call</span><br />
+    <span class="n">7</span>
+    <h2><code>videos.insert</code></h2>
+    <p>The one API call: a resumable upload of that single file, with the reviewed metadata. A progress bar tracks
+      it and the user can cancel. 1,600 quota units.</p>
+  </div>
+
+  <div class="step local" style="left:1162px; top:486px;">
+    <span class="tag offline">local only</span><br />
+    <span class="n">8</span>
+    <h2>The link comes back</h2>
+    <p>The dialog shows the <code>youtu.be</code> link with <em>Watch</em>, <em>Edit in Studio</em> and
+      <em>Copy link</em>. The URL is saved to a local file. Nothing is read back from YouTube.</p>
+  </div>
+
+  <div class="gate" style="left:1162px; top:698px; width:362px;">
+    <h3>Every upload is deliberate</h3>
+    <p>No background, scheduled, batched or bulk uploads exist in the product. One press of <em>Upload</em> uploads
+      exactly one video, and a second press on the same session warns that it would create a second video.</p>
+  </div>
+
+  <div class="footer" style="right:auto; width:1040px;">
+    <h3>What the user controls at every step</h3>
+    <ul>
+      <li><strong>The content.</strong> Their own recording, on their own channel; title and description editable
+        before upload.</li>
+      <li><strong>The visibility.</strong> Unlisted by default; private and public are the other choices.</li>
+      <li><strong>The access.</strong> Sign-out deletes the local token, and access is revocable at
+        <code>myaccount.google.com/permissions</code>.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

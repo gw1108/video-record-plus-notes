@@ -17,10 +17,13 @@ dependencies = []
 [project.optional-dependencies]
 stt = ["faster-whisper>=1.0"]
 vad = ["silero-vad>=5.1"]
-all = ["faster-whisper>=1.0", "silero-vad>=5.1"]
+# The uploader is opt-in: without these `playtest-youtube status` and `upload --dry-run` still work, everything else says how to install them.
+youtube = ["google-auth>=2.30", "google-auth-oauthlib>=1.2", "google-api-python-client>=2.140"]
+all = ["faster-whisper>=1.0", "silero-vad>=5.1", "google-auth>=2.30", "google-auth-oauthlib>=1.2", "google-api-python-client>=2.140"]
 
 [project.scripts]
 playtest-pipeline = "playtest_pipeline.cli:main"
+playtest-youtube = "playtest_pipeline.youtube_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["playtest_pipeline*"]

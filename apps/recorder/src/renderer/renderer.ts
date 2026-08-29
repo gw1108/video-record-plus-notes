@@ -8,6 +8,9 @@ import type {
   SessionListEntry,
   SessionSummary,
   StatusSnapshot,
+  YouTubeKit,
+  YouTubePrivacy,
+  YouTubeStatus,
 } from '../common/ipc-contract.js';
 
 declare global {
@@ -429,6 +432,8 @@ function fillConfigForm(): void {
   $<HTMLInputElement>('pipeline-pre').value = String(pipeline.preSeconds);
   $<HTMLInputElement>('pipeline-post').value = String(pipeline.postSeconds);
   $<HTMLInputElement>('pipeline-merge').value = String(pipeline.mergeGapSeconds);
+  $<HTMLInputElement>('youtube-command').value = config.youtube.command;
+  $<HTMLSelectElement>('youtube-privacy').value = config.youtube.privacy;
 }
 
 function numberField(id: string, fallback: number): number {
@@ -465,6 +470,10 @@ function readConfigForm(): RecorderConfig {
       preSeconds: numberField('pipeline-pre', config.pipeline.preSeconds),
       postSeconds: numberField('pipeline-post', config.pipeline.postSeconds),
       mergeGapSeconds: numberField('pipeline-merge', config.pipeline.mergeGapSeconds),
+    },
+    youtube: {
+      command: $<HTMLInputElement>('youtube-command').value.trim() || 'playtest-youtube',
+      privacy: $<HTMLSelectElement>('youtube-privacy').value as RecorderConfig['youtube']['privacy'],
     },
     sessionsDir: $<HTMLInputElement>('sessions-dir').value.trim(),
   };
@@ -551,6 +560,8 @@ function renderSessions(entries: SessionListEntry[]): void {
     title.title = entry.sessionDir;
     if (running) title.appendChild(badge('pipeline running', 'running'));
     else if (entry.hasReport) title.appendChild(badge('report', 'report'));
+    if (uploadingDir === entry.sessionDir) title.appendChild(badge('uploading', 'running'));
+    else if (entry.youtubeUrl) title.appendChild(badge('on YouTube', 'youtube'));
     if (entry.unfinished) title.appendChild(badge('unfinished', 'unfinished'));
     if (entry.recordingFile && !entry.recordingExists) title.appendChild(badge('recording missing', 'missing'));
 
@@ -583,6 +594,14 @@ function renderSessions(entries: SessionListEntry[]): void {
       run.title = entry.recordingExists ? '' : 'The OBS recording named in the sidecar is missing.';
       run.addEventListener('click', () => void runPipeline(entry));
     }
+    const publish = document.createElement('button');
+    publish.type = 'button';
+    publish.textContent = entry.youtubeUrl ? 'Published' : 'Publish';
+    publish.disabled = !entry.hasCondensed || running || uploadingDir !== null;
+    publish.title = entry.hasCondensed
+      ? 'Upload the condensed cut to YouTube, with your notes as chapters.'
+      : 'No condensed.mp4 yet — run the pipeline first.';
+    publish.addEventListener('click', () => void openPublish(entry));
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'danger';
@@ -592,7 +611,7 @@ function renderSessions(entries: SessionListEntry[]): void {
       ? 'Cancel the running pipeline first.'
       : 'Move this session folder to the Recycle Bin (asks first).';
     del.addEventListener('click', () => void deleteSession(entry));
-    actions.append(openReport, openFolder, run, del);
+    actions.append(openReport, openFolder, run, publish, del);
     row.append(title, meta, actions);
     sessionsEl.appendChild(row);
   }
@@ -634,6 +653,307 @@ async function loadSessions(): Promise<void> {
 
 function logPipeline(line: string): void {
   appendLog('pipeline', `  ${line}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// Publish to YouTube (PLAN M2.4): a dialog over `playtest-youtube upload
+// --json`. Main spawns the CLI; the events it emits drive the progress bar, so
+// what this dialog does and what the documented command does stay the same
+// thing. The title and description shown here ARE report/youtube/*.txt — edits
+// are saved back to those files, which the manual Studio route also uses.
+// ---------------------------------------------------------------------------
+
+const publishDialog = $<HTMLDialogElement>('publish-dialog');
+const publishTitle = $<HTMLInputElement>('publish-title');
+const publishDescription = $<HTMLTextAreaElement>('publish-description');
+const publishPrivacy = $<HTMLSelectElement>('publish-privacy');
+const publishStartBtn = $<HTMLButtonElement>('publish-start');
+const publishCancelBtn = $<HTMLButtonElement>('publish-cancel');
+const publishSignInBtn = $<HTMLButtonElement>('publish-signin');
+const publishSignOutBtn = $<HTMLButtonElement>('publish-signout');
+
+/** Under three timestamps YouTube draws no chapter bar (youtube.py MIN_CHAPTERS). */
+const MIN_CHAPTERS = 3;
+const TIMECODE_LINE = /^(?:\d+:)?\d{1,2}:\d{2}\s+\S/;
+
+let publishEntry: SessionListEntry | null = null;
+let publishKit: YouTubeKit | null = null;
+/** Non-null while an upload runs — whether or not the dialog is still open. */
+let uploadingDir: string | null = null;
+let uploadProgress: { sent: number; total: number } | null = null;
+
+function mib(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function showEl(id: string, visible: boolean): void {
+  $<HTMLElement>(id).classList.toggle('hidden', !visible);
+}
+
+/** Anything user- or API-supplied that lands in a notice goes through here first. */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
+}
+
+function notice(id: string, html: string): void {
+  const el = $<HTMLElement>(id);
+  el.replaceChildren();
+  el.insertAdjacentHTML('beforeend', html);
+  el.classList.remove('hidden');
+}
+
+function updatePublishCounts(): void {
+  const description = publishDescription.value;
+  const chapters = description.split('\n').filter((line) => TIMECODE_LINE.test(line)).length;
+  const bytes = new TextEncoder().encode(description).length;
+  const video = publishKit?.videoBytes ? ` · ${mib(publishKit.videoBytes)} video` : '';
+  const chapterNote = chapters < MIN_CHAPTERS ? ' (under 3 — no chapter bar)' : '';
+  $<HTMLSpanElement>('publish-counts').textContent =
+    `${publishTitle.value.length}/100 title · ${chapters} chapters${chapterNote} · ${bytes}/5000 bytes${video}`;
+}
+
+/**
+ * Reflect `playtest-youtube status` in the account line. Not being signed in
+ * is not an error: the upload opens the consent screen itself. A missing
+ * command, missing libraries, or missing OAuth client are, and each disables
+ * the Upload button with the fix in the line.
+ */
+function renderPublishAccount(status: YouTubeStatus | null, busyText?: string): void {
+  const dot = $<HTMLSpanElement>('publish-account-dot');
+  const text = $<HTMLSpanElement>('publish-account-text');
+  if (busyText) {
+    dot.className = 'status-dot paused';
+    text.textContent = busyText;
+    publishSignInBtn.disabled = true;
+    publishSignOutBtn.classList.add('hidden');
+    return;
+  }
+  publishSignInBtn.disabled = false;
+  const blocked = (message: string): void => {
+    dot.className = 'status-dot';
+    text.textContent = message;
+    publishSignInBtn.classList.add('hidden');
+    publishSignOutBtn.classList.add('hidden');
+    publishStartBtn.disabled = true;
+  };
+  if (!status) {
+    blocked('Checking the uploader…');
+    return;
+  }
+  if (!status.ok) {
+    blocked(status.error ?? 'playtest-youtube could not be run.');
+    return;
+  }
+  if (status.libraries === false) {
+    blocked(`Uploader libraries missing — ${status.librariesHint ?? 'pip install -e "pipeline[youtube]"'}`);
+    return;
+  }
+  if (status.client && !status.client.ok) {
+    blocked(`No Google OAuth client — ${status.client.hint ?? status.client.error ?? 'run the M2.4 wizard'}`);
+    return;
+  }
+  const signedIn = Boolean(status.token?.exists && status.token.scopesOk);
+  const expiry = status.token?.expiry ? new Date(status.token.expiry) : null;
+  dot.className = `status-dot ${signedIn ? 'done' : 'paused'}`;
+  text.textContent = signedIn
+    ? `Signed in${expiry ? ` · token valid until ${expiry.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : ''}`
+    : 'Not signed in — uploading opens the Google consent screen in your browser.';
+  publishSignInBtn.textContent = signedIn ? 'Sign in again' : 'Sign in with Google';
+  publishSignInBtn.classList.remove('hidden');
+  publishSignOutBtn.classList.toggle('hidden', !status.token?.exists);
+  publishStartBtn.disabled = !publishKit?.ok || uploadingDir !== null;
+}
+
+function setUploadingUi(uploading: boolean): void {
+  showEl('publish-progress', uploading);
+  publishCancelBtn.classList.toggle('hidden', !uploading);
+  publishStartBtn.classList.toggle('hidden', uploading);
+  publishTitle.disabled = uploading;
+  publishDescription.disabled = uploading;
+  publishPrivacy.disabled = uploading;
+}
+
+function renderUploadProgress(sent: number, total: number): void {
+  uploadProgress = { sent, total };
+  const fill = $<HTMLDivElement>('publish-progress-fill');
+  fill.classList.remove('indeterminate');
+  const pct = total > 0 ? Math.min(100, (100 * sent) / total) : 0;
+  fill.style.width = `${pct}%`;
+  $<HTMLDivElement>('publish-progress-text').textContent =
+    `Uploading… ${pct.toFixed(1)}%  (${mib(sent)} of ${mib(total)})`;
+}
+
+/** Sign-in and the pre-upload handshake have no percentage — sweep instead. */
+function renderUploadWaiting(message: string): void {
+  const fill = $<HTMLDivElement>('publish-progress-fill');
+  fill.classList.add('indeterminate');
+  fill.style.width = '';
+  $<HTMLDivElement>('publish-progress-text').textContent = message;
+}
+
+async function openPublish(entry: SessionListEntry): Promise<void> {
+  publishEntry = entry;
+  publishKit = null;
+  $<HTMLSpanElement>('publish-session').textContent = `${entry.title} · ${entry.sessionDir}`;
+  for (const id of ['publish-audit', 'publish-previous', 'publish-result', 'publish-error']) {
+    $<HTMLElement>(id).classList.add('hidden');
+  }
+  const uploading = uploadingDir === entry.sessionDir;
+  setUploadingUi(uploading);
+  if (uploading && uploadProgress) renderUploadProgress(uploadProgress.sent, uploadProgress.total);
+  renderPublishAccount(null);
+  publishPrivacy.value = config.youtube.privacy;
+  publishDialog.showModal();
+
+  const kit = await api.youtubeKit(entry.sessionDir);
+  publishKit = kit;
+  publishTitle.value = kit.title;
+  publishDescription.value = kit.description;
+  updatePublishCounts();
+  if (!kit.ok) {
+    notice('publish-error', escapeHtml(kit.error ?? 'This session has nothing to upload.'));
+  }
+  if (kit.previousUrl) {
+    notice(
+      'publish-previous',
+      `Already uploaded: <a href="#" data-external="${escapeHtml(kit.previousUrl)}">${escapeHtml(kit.previousUrl)}</a>. ` +
+        'Uploading again creates a <em>second</em> video; the first stays on your channel.',
+    );
+  }
+  publishStartBtn.textContent = kit.previousUrl ? 'Upload again' : 'Upload';
+  await refreshPublishStatus();
+}
+
+async function refreshPublishStatus(): Promise<void> {
+  const status = await api.youtubeStatus();
+  renderPublishAccount(status);
+  if (status.auditWarning) {
+    notice('publish-audit', `<strong>Heads up:</strong> ${escapeHtml(status.auditWarning)}.`);
+  } else {
+    $<HTMLElement>('publish-audit').classList.add('hidden');
+  }
+}
+
+async function publishSignIn(reauth: boolean): Promise<void> {
+  renderPublishAccount(null, 'Waiting for the Google consent screen in your browser…');
+  const result = await api.youtubeSignIn(reauth);
+  if (result.ok) {
+    log('info', 'Signed in to YouTube.');
+    $<HTMLElement>('publish-error').classList.add('hidden');
+  } else {
+    log('error', `YouTube sign-in: ${result.error ?? 'failed'}${result.hint ? ` — ${result.hint}` : ''}`);
+    notice('publish-error', escapeHtml(result.error ?? 'Sign-in failed.'));
+  }
+  await refreshPublishStatus();
+}
+
+async function startUpload(): Promise<void> {
+  if (!publishEntry) return;
+  $<HTMLElement>('publish-error').classList.add('hidden');
+  $<HTMLElement>('publish-result').classList.add('hidden');
+  const result = await api.youtubeUpload({
+    sessionDir: publishEntry.sessionDir,
+    title: publishTitle.value.trim(),
+    description: publishDescription.value,
+    privacy: publishPrivacy.value as YouTubePrivacy,
+    // The CLI refuses a second upload of the same bundle unless forced; the
+    // dialog has already said, above, that this makes a second video.
+    force: Boolean(publishKit?.previousUrl),
+  });
+  if (!result.ok) {
+    notice('publish-error', escapeHtml(result.error ?? 'Could not start the upload.'));
+    return;
+  }
+  setUploadingUi(true);
+  renderUploadWaiting('Starting…');
+}
+
+/** Uploads outlive the dialog, so every DOM write is guarded on the dialog still showing that session. */
+function whenPublishing(sessionDir: string, apply: () => void): void {
+  if (publishDialog.open && publishEntry?.sessionDir === sessionDir) apply();
+}
+
+function renderUploadDone(event: {
+  ok: boolean;
+  url?: string;
+  studioUrl?: string;
+  privacyStatus?: string;
+  requestedPrivacy?: string;
+  error?: string;
+  hint?: string;
+}): void {
+  setUploadingUi(false);
+  if (!event.ok) {
+    notice('publish-error', `${escapeHtml(event.error ?? 'Upload failed.')}${event.hint ? `<br /><em>${escapeHtml(event.hint)}</em>` : ''}`);
+    return;
+  }
+  const url = event.url ?? '';
+  const locked =
+    event.privacyStatus && event.requestedPrivacy && event.privacyStatus !== event.requestedPrivacy
+      ? `<br />YouTube set the visibility to <strong>${escapeHtml(event.privacyStatus)}</strong> (you asked for ${escapeHtml(event.requestedPrivacy)}) — that is the pending compliance audit, not a failed upload. You can change it in Studio once the audit passes.`
+      : '';
+  notice(
+    'publish-result',
+    `<strong>Uploaded.</strong> <a href="#" data-external="${escapeHtml(url)}">${escapeHtml(url)}</a>${locked}` +
+      '<div class="row">' +
+      `<button type="button" data-external="${escapeHtml(url)}">Watch</button>` +
+      `<button type="button" data-external="${escapeHtml(event.studioUrl ?? '')}">Edit in Studio</button>` +
+      `<button type="button" id="publish-copy-url">Copy link</button>` +
+      '</div>' +
+      '<div class="hint">The link is saved to <code class="inline">report/youtube/url.txt</code>, so ' +
+      '<code class="inline">playtest-notion publish</code> picks it up without <code class="inline">--youtube</code>. ' +
+      'YouTube needs a few minutes of processing before the chapters appear.</div>',
+  );
+  const copy = document.getElementById('publish-copy-url');
+  copy?.addEventListener('click', () => {
+    void navigator.clipboard.writeText(url);
+    log('info', 'YouTube link copied.');
+  });
+  // url.txt now exists, so the CLI would refuse a plain second upload. Say what
+  // the button would really do — and make it pass --force when pressed.
+  if (publishKit) publishKit.previousUrl = url;
+  publishStartBtn.textContent = 'Upload again';
+}
+
+function initPublish(): void {
+  publishTitle.addEventListener('input', updatePublishCounts);
+  publishDescription.addEventListener('input', updatePublishCounts);
+  publishStartBtn.addEventListener('click', () => void startUpload());
+  publishCancelBtn.addEventListener('click', () => void api.youtubeCancel());
+  publishSignInBtn.addEventListener('click', () => void publishSignIn(false));
+  publishSignOutBtn.addEventListener('click', async () => {
+    const result = await api.youtubeSignOut();
+    log(result.ok ? 'info' : 'error', result.ok ? 'Signed out — the cached token was deleted.' : `Sign-out: ${result.error}`);
+    await refreshPublishStatus();
+  });
+  $<HTMLButtonElement>('publish-close').addEventListener('click', () => publishDialog.close());
+  // Links and buttons inside notices open in the real browser, never in-app.
+  publishDialog.addEventListener('click', (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-external]');
+    const url = target?.dataset.external;
+    if (!url) return;
+    event.preventDefault();
+    void api.openExternal(url).then(reportIpcError);
+  });
+  $<HTMLButtonElement>('youtube-check').addEventListener('click', () => void checkYouTubeSetup());
+}
+
+/** Settings-card probe: the same status the dialog shows, without opening it. */
+async function checkYouTubeSetup(): Promise<void> {
+  config = await api.setConfig(readConfigForm()); // check the command as typed
+  const el = $<HTMLDivElement>('youtube-setup');
+  el.textContent = 'Checking…';
+  const status = await api.youtubeStatus();
+  if (!status.ok) {
+    el.textContent = status.error ?? 'playtest-youtube could not be run.';
+    return;
+  }
+  el.textContent = [
+    status.libraries ? 'libraries installed' : `libraries MISSING — ${status.librariesHint ?? ''}`,
+    status.client?.ok ? `OAuth client ${status.client.project ?? 'ok'}` : `no OAuth client — ${status.client?.hint ?? ''}`,
+    status.token?.exists ? 'signed in' : 'not signed in',
+    status.audit ? `audit: ${status.audit}` : 'audit not passed — uploads land private',
+  ].join(' · ');
 }
 
 // ---------------------------------------------------------------------------
@@ -945,6 +1265,7 @@ async function init(): Promise<void> {
   initBindingCapture();
   initLogPane();
   initWizard();
+  initPublish();
   config = await api.getConfig();
   fillConfigForm();
   renderStatus(await api.getStatus());
@@ -1026,6 +1347,37 @@ async function init(): Promise<void> {
       case 'log':
         log(event.level, event.message);
         break;
+      case 'youtube-started':
+        uploadingDir = event.sessionDir;
+        renderSessions(sessionsCache);
+        whenPublishing(event.sessionDir, () => renderUploadWaiting('Starting…'));
+        break;
+      case 'youtube-auth-waiting':
+        log('info', 'YouTube: waiting for the Google consent screen in your browser…');
+        whenPublishing(event.sessionDir, () =>
+          renderUploadWaiting('Waiting for the Google consent screen in your browser…'),
+        );
+        break;
+      case 'youtube-auth-done':
+        whenPublishing(event.sessionDir, () => renderUploadWaiting('Authorized. Starting the upload…'));
+        break;
+      case 'youtube-progress':
+        whenPublishing(event.sessionDir, () => renderUploadProgress(event.sent, event.total));
+        break;
+      case 'youtube-output':
+        logPipeline(event.line);
+        break;
+      case 'youtube-done': {
+        uploadingDir = null;
+        const done = event;
+        log(
+          done.ok ? 'info' : 'error',
+          done.ok ? `Uploaded to YouTube: ${done.url ?? ''}` : `YouTube upload failed: ${done.error ?? 'unknown error'}`,
+        );
+        whenPublishing(done.sessionDir, () => renderUploadDone(done));
+        void loadSessions();
+        break;
+      }
       case 'capture-input':
         // A controller/HID press identified by the helper while armed.
         if (capturing) finishCapture(event.binding);
